@@ -39,6 +39,24 @@ specific output context so that only the necessary characters are encoded.
 | `for_html_attribute` | quoted attributes only | does not encode `>` |
 | `for_html_unquoted_attribute` | unquoted attribute values | most aggressive |
 
+### XML
+
+| function | safe for | notes |
+|----------|----------|-------|
+| `for_xml` | XML content + quoted attributes | alias for `for_html` |
+| `for_xml_content` | XML content only | alias for `for_html_content` |
+| `for_xml_attribute` | quoted XML attributes | alias for `for_html_attribute` |
+| `for_xml_comment` | XML comment content | `--` → `-~`, trailing `-` → `~` |
+| `for_cdata` | CDATA section content | splits `]]>` to prevent premature close |
+
+### XML 1.1
+
+| function | safe for | notes |
+|----------|----------|-------|
+| `for_xml11` | XML 1.1 content + quoted attributes | restricted chars → `&#xHH;` |
+| `for_xml11_content` | XML 1.1 content only | does not encode quotes |
+| `for_xml11_attribute` | quoted XML 1.1 attributes | does not encode `>` |
+
 ### JavaScript
 
 | function | safe for | notes |
@@ -60,6 +78,20 @@ specific output context so that only the necessary characters are encoded.
 | function | safe for | notes |
 |----------|----------|-------|
 | `for_uri_component` | query params, path segments | RFC 3986 percent-encoding |
+
+### Java
+
+| function | safe for | notes |
+|----------|----------|-------|
+| `for_java` | Java string / char literals | octal escapes, surrogate pairs for supplementary plane |
+
+### Rust
+
+| function | safe for | notes |
+|----------|----------|-------|
+| `for_rust_string` | Rust string literals (`"..."`) | `\xHH` for controls, non-ASCII passes through |
+| `for_rust_char` | Rust char literals (`'...'`) | escapes `'` instead of `"` |
+| `for_rust_byte_string` | Rust byte string literals (`b"..."`) | non-ASCII → `\xHH` per UTF-8 byte |
 
 ## unsupported / dangerous contexts
 
@@ -147,7 +179,8 @@ execute. always validate the URL scheme before embedding.
 
 **HTML comments:** no HTML comment encoder is provided. HTML comments have
 vendor-specific extensions (e.g., `<!--[if IE]>`) that make safe encoding
-impractical. never embed untrusted data in HTML comments.
+impractical. never embed untrusted data in HTML comments. `for_xml_comment`
+is for XML comments only — it is **not safe for HTML comments**.
 
 ## differences from OWASP Java Encoder
 
@@ -174,13 +207,6 @@ impractical. never embed untrusted data in HTML comments.
   some JavaScript contexts to prevent `-->` sequences. this crate does not
   encode `-` in JavaScript. the `-->` sequence inside a JS string literal is
   harmless because the HTML parser does not scan string literal contents.
-
-### phase 2 (not yet implemented)
-- XML-specific aliases (`for_xml`, `for_xml_content`, `for_xml_attribute`)
-- `for_xml_comment`
-- XML 1.1 variants (`for_xml11`, `for_xml11_content`, `for_xml11_attribute`)
-- `for_cdata`
-- `for_java` (Java string literal encoding)
 
 ## license
 

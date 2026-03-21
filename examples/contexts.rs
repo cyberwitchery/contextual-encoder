@@ -7,9 +7,11 @@
 // from the inside out.
 
 use contextual_encoder::{
-    for_css_string, for_css_url, for_html, for_html_attribute, for_html_content,
-    for_html_unquoted_attribute, for_javascript, for_javascript_attribute, for_javascript_block,
-    for_javascript_source, for_uri_component,
+    for_cdata, for_css_string, for_css_url, for_html, for_html_attribute, for_html_content,
+    for_html_unquoted_attribute, for_java, for_javascript, for_javascript_attribute,
+    for_javascript_block, for_javascript_source, for_rust_byte_string, for_rust_char,
+    for_rust_string, for_uri_component, for_xml, for_xml11, for_xml11_attribute, for_xml11_content,
+    for_xml_attribute, for_xml_comment, for_xml_content,
 };
 
 fn main() {
@@ -83,6 +85,48 @@ fn main() {
         for_uri_component(input)
     );
     println!();
+
+    // xml 1.0 aliases — identical to the html encoders
+    println!("--- xml 1.0 ---");
+    println!("  for_xml:                      {}", for_xml(input));
+    println!("  for_xml_content:              {}", for_xml_content(input));
+    println!(
+        "  for_xml_attribute:            {}",
+        for_xml_attribute(input)
+    );
+
+    // xml-only contexts
+    println!("  for_xml_comment:              {}", for_xml_comment(input));
+    println!("  for_cdata:                    {}", for_cdata(input));
+    println!();
+
+    // xml 1.1 — restricted chars get &#xHH; instead of space
+    println!("--- xml 1.1 ---");
+    let xml11_input = "a\x01b<c>";
+    println!("  for_xml11:                    {}", for_xml11(xml11_input));
+    println!(
+        "  for_xml11_content:            {}",
+        for_xml11_content(xml11_input)
+    );
+    println!(
+        "  for_xml11_attribute:          {}",
+        for_xml11_attribute(xml11_input)
+    );
+    println!();
+
+    // java string literal — octal escapes, surrogate pairs
+    println!("--- java ---");
+    println!("  for_java:                     {}", for_java(input));
+    println!();
+
+    // rust literals — \xHH escapes, UTF-8 byte encoding for byte strings
+    println!("--- rust ---");
+    println!("  for_rust_string:              {}", for_rust_string(input));
+    println!("  for_rust_char:                {}", for_rust_char(input));
+    println!(
+        "  for_rust_byte_string:         {}",
+        for_rust_byte_string(input)
+    );
 
     // -----------------------------------------------------------------------
     // practical: one realistic input per sink, correct encoder for each

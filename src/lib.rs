@@ -2,8 +2,8 @@
 //!
 //! this crate provides context-aware encoding functions inspired by the
 //! [OWASP Java Encoder](https://owasp.org/owasp-java-encoder/). each function
-//! encodes input for safe embedding in a specific output context (HTML, JavaScript,
-//! CSS, or URI).
+//! encodes input for safe embedding in a specific output context (HTML, XML,
+//! JavaScript, CSS, URI, Java, or Rust).
 //!
 //! **disclaimer:** contextual-encoder is an independent Rust crate. its API and security model
 //! are inspired by the OWASP Java Encoder, but this project is not affiliated with,
@@ -40,6 +40,24 @@
 //! | [`for_html_attribute`] | quoted attributes only |
 //! | [`for_html_unquoted_attribute`] | unquoted attribute values |
 //!
+//! ## XML
+//!
+//! | function | safe for |
+//! |----------|----------|
+//! | [`for_xml`] | XML text content + quoted attributes (alias for `for_html`) |
+//! | [`for_xml_content`] | XML text content only (alias for `for_html_content`) |
+//! | [`for_xml_attribute`] | quoted XML attributes only (alias for `for_html_attribute`) |
+//! | [`for_xml_comment`] | XML comment content |
+//! | [`for_cdata`] | CDATA section content |
+//!
+//! ## XML 1.1
+//!
+//! | function | safe for |
+//! |----------|----------|
+//! | [`for_xml11`] | XML 1.1 content + quoted attributes |
+//! | [`for_xml11_content`] | XML 1.1 content only |
+//! | [`for_xml11_attribute`] | XML 1.1 quoted attributes only |
+//!
 //! ## JavaScript
 //!
 //! | function | safe for |
@@ -61,6 +79,20 @@
 //! | function | safe for |
 //! |----------|----------|
 //! | [`for_uri_component`] | URI components (query params, path segments) |
+//!
+//! ## Java
+//!
+//! | function | safe for |
+//! |----------|----------|
+//! | [`for_java`] | Java string / char literals |
+//!
+//! ## Rust
+//!
+//! | function | safe for |
+//! |----------|----------|
+//! | [`for_rust_string`] | Rust string literals (`"..."`) |
+//! | [`for_rust_char`] | Rust char literals (`'...'`) |
+//! | [`for_rust_byte_string`] | Rust byte string literals (`b"..."`) |
 //!
 //! # security model
 //!
@@ -89,7 +121,8 @@
 //!   not a complete fix. avoid unquoted attributes.
 //! - **HTML comments.** no HTML comment encoder is provided because HTML
 //!   comments have vendor-specific extensions (e.g., conditional comments)
-//!   that make safe encoding impractical.
+//!   that make safe encoding impractical. [`for_xml_comment`] is for XML
+//!   comments only.
 //!
 //! # writer-based API
 //!
@@ -107,8 +140,11 @@
 
 pub mod css;
 pub mod html;
+pub mod java;
 pub mod javascript;
+pub mod rust;
 pub mod uri;
+pub mod xml;
 
 mod engine;
 
@@ -118,8 +154,18 @@ pub use html::{
     for_html, for_html_attribute, for_html_content, for_html_unquoted_attribute, write_html,
     write_html_attribute, write_html_content, write_html_unquoted_attribute,
 };
+pub use java::{for_java, write_java};
 pub use javascript::{
     for_javascript, for_javascript_attribute, for_javascript_block, for_javascript_source,
     write_javascript, write_javascript_attribute, write_javascript_block, write_javascript_source,
 };
+pub use rust::{
+    for_rust_byte_string, for_rust_char, for_rust_string, write_rust_byte_string, write_rust_char,
+    write_rust_string,
+};
 pub use uri::{for_uri_component, write_uri_component};
+pub use xml::{
+    for_cdata, for_xml, for_xml11, for_xml11_attribute, for_xml11_content, for_xml_attribute,
+    for_xml_comment, for_xml_content, write_cdata, write_xml, write_xml11, write_xml11_attribute,
+    write_xml11_content, write_xml_attribute, write_xml_comment, write_xml_content,
+};

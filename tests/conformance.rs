@@ -553,6 +553,501 @@ mod uri {
 }
 
 // ===========================================================================
+// XML context tests
+// ===========================================================================
+
+mod xml {
+    use super::*;
+
+    // -- XML 1.0 aliases --
+
+    #[test]
+    fn aliases_identical_to_html() {
+        let input = r#"<root attr="val">&amp; 'x' </root>"#;
+        assert_eq!(for_xml(input), for_html(input));
+        assert_eq!(for_xml_content(input), for_html_content(input));
+        assert_eq!(for_xml_attribute(input), for_html_attribute(input));
+    }
+
+    #[test]
+    fn xml_writer_matches_string() {
+        let input = r#"<test attr="val">&'</test>"#;
+        let mut w = String::new();
+        write_xml(&mut w, input).unwrap();
+        assert_eq!(for_xml(input), w);
+
+        let mut w = String::new();
+        write_xml_content(&mut w, input).unwrap();
+        assert_eq!(for_xml_content(input), w);
+
+        let mut w = String::new();
+        write_xml_attribute(&mut w, input).unwrap();
+        assert_eq!(for_xml_attribute(input), w);
+    }
+
+    // -- XML comment --
+
+    #[test]
+    fn comment_safe_passthrough() {
+        assert_eq!(for_xml_comment("safe comment text"), "safe comment text");
+        assert_eq!(for_xml_comment(""), "");
+    }
+
+    #[test]
+    fn comment_neutralizes_double_hyphen() {
+        assert_eq!(for_xml_comment("a--b"), "a-~b");
+        assert_eq!(for_xml_comment("a---b"), "a-~-b");
+        assert_eq!(for_xml_comment("----"), "-~-~");
+    }
+
+    #[test]
+    fn comment_trailing_hyphen() {
+        assert_eq!(for_xml_comment("abc-"), "abc~");
+        assert_eq!(for_xml_comment("-"), "~");
+        assert_eq!(for_xml_comment("--"), "-~");
+    }
+
+    #[test]
+    fn comment_invalid_xml_chars_replaced() {
+        // C0 controls (except tab/LF/CR)
+        assert_eq!(for_xml_comment("a\x00b"), "a b");
+        assert_eq!(for_xml_comment("a\x01b"), "a b");
+        // DEL
+        assert_eq!(for_xml_comment("a\x7Fb"), "a b");
+        // C1 controls
+        assert_eq!(for_xml_comment("a\u{0080}b"), "a b");
+        // non-characters
+        assert_eq!(for_xml_comment("a\u{FDD0}b"), "a b");
+    }
+
+    #[test]
+    fn comment_preserves_allowed_chars() {
+        assert_eq!(for_xml_comment("café 日本語"), "café 日本語");
+        assert_eq!(for_xml_comment("a\tb\nc\rd"), "a\tb\nc\rd");
+    }
+
+    #[test]
+    fn comment_combined_edge_cases() {
+        // hyphen + invalid char + hyphen
+        assert_eq!(for_xml_comment("-\x00-"), "- ~");
+    }
+
+    #[test]
+    fn comment_writer_matches_string() {
+        let input = "test--comment-";
+        let mut w = String::new();
+        write_xml_comment(&mut w, input).unwrap();
+        assert_eq!(for_xml_comment(input), w);
+    }
+
+    // -- CDATA --
+
+    #[test]
+    fn cdata_safe_passthrough() {
+        assert_eq!(for_cdata("safe text"), "safe text");
+        assert_eq!(for_cdata(""), "");
+        // angle brackets are fine inside CDATA
+        assert_eq!(for_cdata("<b>bold</b>"), "<b>bold</b>");
+    }
+
+    #[test]
+    fn cdata_splits_closing_delimiter() {
+        assert_eq!(for_cdata("a]]>b"), "a]]]]><![CDATA[>b");
+    }
+
+    #[test]
+    fn cdata_multiple_splits() {
+        assert_eq!(for_cdata("x]]>y]]>z"), "x]]]]><![CDATA[>y]]]]><![CDATA[>z");
+    }
+
+    #[test]
+    fn cdata_brackets_without_gt() {
+        // just brackets, no >
+        assert_eq!(for_cdata("]]"), "]]");
+        assert_eq!(for_cdata("]]]"), "]]]");
+        // single bracket + >
+        assert_eq!(for_cdata("]>"), "]>");
+    }
+
+    #[test]
+    fn cdata_extra_brackets_before_gt() {
+        // ]]]> = ] + ]]>
+        assert_eq!(for_cdata("]]]>"), "]]]]]><![CDATA[>");
+        // ]]]]> = ]] + ]]>
+        assert_eq!(for_cdata("]]]]>"), "]]]]]]><![CDATA[>");
+    }
+
+    #[test]
+    fn cdata_at_start() {
+        assert_eq!(for_cdata("]]>rest"), "]]]]><![CDATA[>rest");
+    }
+
+    #[test]
+    fn cdata_at_end() {
+        assert_eq!(for_cdata("start]]>"), "start]]]]><![CDATA[>");
+    }
+
+    #[test]
+    fn cdata_invalid_xml_replaced() {
+        assert_eq!(for_cdata("a\x00b"), "a b");
+        assert_eq!(for_cdata("a\x01b"), "a b");
+        assert_eq!(for_cdata("a\u{FDD0}b"), "a b");
+    }
+
+    #[test]
+    fn cdata_writer_matches_string() {
+        let input = "x]]>y\x00z]]";
+        let mut w = String::new();
+        write_cdata(&mut w, input).unwrap();
+        assert_eq!(for_cdata(input), w);
+    }
+
+    // -- XML 1.1 --
+
+    #[test]
+    fn xml11_entities() {
+        assert_eq!(for_xml11("<&>\"'"), "&lt;&amp;&gt;&#34;&#39;");
+    }
+
+    #[test]
+    fn xml11_controls_as_char_references() {
+        // C0 controls (not tab/LF/CR) → &#xHH;
+        assert_eq!(for_xml11("a\x01b"), "a&#x1;b");
+        assert_eq!(for_xml11("a\x08b"), "a&#x8;b");
+        assert_eq!(for_xml11("a\x0Bb"), "a&#xb;b");
+        assert_eq!(for_xml11("a\x0Cb"), "a&#xc;b");
+        assert_eq!(for_xml11("a\x1Fb"), "a&#x1f;b");
+    }
+
+    #[test]
+    fn xml11_preserves_tab_lf_cr() {
+        assert_eq!(for_xml11("a\tb\nc\rd"), "a\tb\nc\rd");
+    }
+
+    #[test]
+    fn xml11_nel_passes_through() {
+        // NEL (U+0085) is NOT restricted in XML 1.1
+        assert_eq!(for_xml11("a\u{0085}b"), "a\u{0085}b");
+    }
+
+    #[test]
+    fn xml11_del_and_c1_as_references() {
+        assert_eq!(for_xml11("a\x7Fb"), "a&#x7f;b");
+        assert_eq!(for_xml11("a\u{0080}b"), "a&#x80;b");
+        assert_eq!(for_xml11("a\u{0084}b"), "a&#x84;b");
+        assert_eq!(for_xml11("a\u{0086}b"), "a&#x86;b");
+        assert_eq!(for_xml11("a\u{009F}b"), "a&#x9f;b");
+    }
+
+    #[test]
+    fn xml11_nul_replaced_with_space() {
+        // NUL is invalid (not representable) in XML 1.1
+        assert_eq!(for_xml11("a\x00b"), "a b");
+    }
+
+    #[test]
+    fn xml11_nonchars_replaced_with_space() {
+        assert_eq!(for_xml11("a\u{FDD0}b"), "a b");
+        assert_eq!(for_xml11("a\u{FFFE}b"), "a b");
+    }
+
+    #[test]
+    fn xml11_content_no_quotes() {
+        assert_eq!(for_xml11_content(r#"a"b'c"#), r#"a"b'c"#);
+        assert_eq!(for_xml11_content("a\x01b"), "a&#x1;b");
+    }
+
+    #[test]
+    fn xml11_attribute_no_gt() {
+        assert_eq!(for_xml11_attribute("a>b"), "a>b");
+        assert_eq!(for_xml11_attribute(r#"a"b"#), "a&#34;b");
+        assert_eq!(for_xml11_attribute("a\x01b"), "a&#x1;b");
+    }
+
+    #[test]
+    fn xml11_writer_matches_string() {
+        let input = "test\x01\x7F<>&\u{0085}";
+        let mut w = String::new();
+        write_xml11(&mut w, input).unwrap();
+        assert_eq!(for_xml11(input), w);
+
+        let mut w = String::new();
+        write_xml11_content(&mut w, input).unwrap();
+        assert_eq!(for_xml11_content(input), w);
+
+        let mut w = String::new();
+        write_xml11_attribute(&mut w, input).unwrap();
+        assert_eq!(for_xml11_attribute(input), w);
+    }
+}
+
+// ===========================================================================
+// Java context tests
+// ===========================================================================
+
+mod java {
+    use super::*;
+
+    #[test]
+    fn passthrough() {
+        assert_eq!(for_java("hello world"), "hello world");
+        assert_eq!(for_java(""), "");
+        assert_eq!(for_java("café 日本語"), "café 日本語");
+    }
+
+    #[test]
+    fn named_escapes() {
+        assert_eq!(for_java("\x08"), "\\b");
+        assert_eq!(for_java("\t"), "\\t");
+        assert_eq!(for_java("\n"), "\\n");
+        assert_eq!(for_java("\x0C"), "\\f");
+        assert_eq!(for_java("\r"), "\\r");
+    }
+
+    #[test]
+    fn quotes_and_backslash() {
+        assert_eq!(for_java(r#"say "hi""#), r#"say \"hi\""#);
+        assert_eq!(for_java("it's"), r"it\'s");
+        assert_eq!(for_java(r"back\slash"), r"back\\slash");
+    }
+
+    #[test]
+    fn octal_escapes_shortest() {
+        // NUL before non-octal → shortest form
+        assert_eq!(for_java("\x00a"), "\\0a");
+        assert_eq!(for_java("\x01a"), "\\1a");
+        assert_eq!(for_java("\x07a"), "\\7a");
+    }
+
+    #[test]
+    fn octal_escapes_three_digit_disambiguation() {
+        // NUL before octal digit → 3-digit form
+        assert_eq!(for_java("\x000"), "\\0000");
+        assert_eq!(for_java("\x007"), "\\0007");
+        assert_eq!(for_java("\x015"), "\\0015");
+    }
+
+    #[test]
+    fn octal_at_end_shortest() {
+        assert_eq!(for_java("\x00"), "\\0");
+        assert_eq!(for_java("\x07"), "\\7");
+        assert_eq!(for_java("\x7F"), "\\177");
+    }
+
+    #[test]
+    fn del_octal() {
+        // DEL = 0x7F = 0o177
+        assert_eq!(for_java("a\x7Fb"), "a\\177b");
+    }
+
+    #[test]
+    fn line_separators() {
+        assert_eq!(for_java("\u{2028}"), "\\u2028");
+        assert_eq!(for_java("\u{2029}"), "\\u2029");
+    }
+
+    #[test]
+    fn supplementary_plane() {
+        // U+1F600 GRINNING FACE → surrogate pair
+        assert_eq!(for_java("\u{1F600}"), "\\ud83d\\ude00");
+        // U+10000 → first supplementary code point
+        assert_eq!(for_java("\u{10000}"), "\\ud800\\udc00");
+    }
+
+    #[test]
+    fn noncharacters() {
+        assert_eq!(for_java("\u{FDD0}"), " ");
+        assert_eq!(for_java("\u{FFFE}"), " ");
+    }
+
+    #[test]
+    fn mixed_xss_payload() {
+        // Java encoder does not encode < / > — they are not special
+        // in Java string literals (unlike JS where </script> matters)
+        assert_eq!(
+            for_java("<script>alert(\"xss\")</script>"),
+            "<script>alert(\\\"xss\\\")</script>"
+        );
+    }
+
+    #[test]
+    fn writer_matches_string() {
+        let input = "test\x00\"\\\u{1F600}\u{2028}";
+        let mut w = String::new();
+        write_java(&mut w, input).unwrap();
+        assert_eq!(for_java(input), w);
+    }
+}
+
+// ===========================================================================
+// Rust literal context tests
+// ===========================================================================
+
+mod rust_literals {
+    use super::*;
+
+    // -- for_rust_string --
+
+    #[test]
+    fn string_passthrough() {
+        assert_eq!(for_rust_string("hello world"), "hello world");
+        assert_eq!(for_rust_string(""), "");
+        assert_eq!(for_rust_string("café 日本語 😀"), "café 日本語 😀");
+    }
+
+    #[test]
+    fn string_escapes_double_quote_not_single() {
+        assert_eq!(for_rust_string(r#"a"b"#), r#"a\"b"#);
+        assert_eq!(for_rust_string("a'b"), "a'b");
+    }
+
+    #[test]
+    fn string_named_escapes() {
+        assert_eq!(for_rust_string("\0"), "\\0");
+        assert_eq!(for_rust_string("\t"), "\\t");
+        assert_eq!(for_rust_string("\n"), "\\n");
+        assert_eq!(for_rust_string("\r"), "\\r");
+    }
+
+    #[test]
+    fn string_hex_for_controls() {
+        assert_eq!(for_rust_string("\x01"), "\\x01");
+        assert_eq!(for_rust_string("\x08"), "\\x08");
+        assert_eq!(for_rust_string("\x0B"), "\\x0b");
+        assert_eq!(for_rust_string("\x0C"), "\\x0c");
+        assert_eq!(for_rust_string("\x1F"), "\\x1f");
+        assert_eq!(for_rust_string("\x7F"), "\\x7f");
+    }
+
+    #[test]
+    fn string_backslash() {
+        assert_eq!(for_rust_string(r"a\b"), r"a\\b");
+    }
+
+    #[test]
+    fn string_nonchars_replaced() {
+        assert_eq!(for_rust_string("\u{FDD0}"), " ");
+        assert_eq!(for_rust_string("\u{FFFE}"), " ");
+    }
+
+    #[test]
+    fn string_supplementary_plane_passes_through() {
+        // unlike Java, Rust strings are UTF-8 — no surrogate pairs needed
+        assert_eq!(for_rust_string("😀"), "😀");
+        assert_eq!(for_rust_string("\u{10000}"), "\u{10000}");
+    }
+
+    #[test]
+    fn string_writer_matches() {
+        let input = "test\0\"\\\ncafé\u{1F600}";
+        let mut w = String::new();
+        write_rust_string(&mut w, input).unwrap();
+        assert_eq!(for_rust_string(input), w);
+    }
+
+    // -- for_rust_char --
+
+    #[test]
+    fn char_passthrough() {
+        assert_eq!(for_rust_char("hello world"), "hello world");
+        assert_eq!(for_rust_char("café"), "café");
+    }
+
+    #[test]
+    fn char_escapes_single_quote_not_double() {
+        assert_eq!(for_rust_char("a'b"), r"a\'b");
+        assert_eq!(for_rust_char(r#"a"b"#), r#"a"b"#);
+    }
+
+    #[test]
+    fn char_named_escapes() {
+        assert_eq!(for_rust_char("\0"), "\\0");
+        assert_eq!(for_rust_char("\t"), "\\t");
+        assert_eq!(for_rust_char("\n"), "\\n");
+        assert_eq!(for_rust_char("\r"), "\\r");
+    }
+
+    #[test]
+    fn char_hex_for_controls() {
+        assert_eq!(for_rust_char("\x01"), "\\x01");
+        assert_eq!(for_rust_char("\x7F"), "\\x7f");
+    }
+
+    #[test]
+    fn char_nonchars_replaced() {
+        assert_eq!(for_rust_char("\u{FDD0}"), " ");
+    }
+
+    #[test]
+    fn char_writer_matches() {
+        let input = "test\0'\\\ncafé";
+        let mut w = String::new();
+        write_rust_char(&mut w, input).unwrap();
+        assert_eq!(for_rust_char(input), w);
+    }
+
+    // -- for_rust_byte_string --
+
+    #[test]
+    fn byte_string_ascii_passthrough() {
+        assert_eq!(for_rust_byte_string("hello world"), "hello world");
+        assert_eq!(for_rust_byte_string(""), "");
+    }
+
+    #[test]
+    fn byte_string_escapes_double_quote_not_single() {
+        assert_eq!(for_rust_byte_string(r#"a"b"#), r#"a\"b"#);
+        assert_eq!(for_rust_byte_string("a'b"), "a'b");
+    }
+
+    #[test]
+    fn byte_string_named_escapes() {
+        assert_eq!(for_rust_byte_string("\0"), "\\0");
+        assert_eq!(for_rust_byte_string("\t"), "\\t");
+        assert_eq!(for_rust_byte_string("\n"), "\\n");
+        assert_eq!(for_rust_byte_string("\r"), "\\r");
+    }
+
+    #[test]
+    fn byte_string_hex_for_controls() {
+        assert_eq!(for_rust_byte_string("\x01"), "\\x01");
+        assert_eq!(for_rust_byte_string("\x7F"), "\\x7f");
+    }
+
+    #[test]
+    fn byte_string_non_ascii_as_utf8_bytes() {
+        // é = U+00E9 → UTF-8: C3 A9
+        assert_eq!(for_rust_byte_string("café"), r"caf\xc3\xa9");
+        // 日 = U+65E5 → UTF-8: E6 97 A5
+        assert_eq!(for_rust_byte_string("日"), r"\xe6\x97\xa5");
+        // 😀 = U+1F600 → UTF-8: F0 9F 98 80
+        assert_eq!(for_rust_byte_string("😀"), r"\xf0\x9f\x98\x80");
+    }
+
+    #[test]
+    fn byte_string_nonchars_as_bytes() {
+        // non-characters get byte-encoded (not replaced with space)
+        // U+FDD0 → UTF-8: EF B7 90
+        assert_eq!(for_rust_byte_string("\u{FDD0}"), r"\xef\xb7\x90");
+    }
+
+    #[test]
+    fn byte_string_vs_string_non_ascii() {
+        // string passes non-ASCII through; byte string encodes it
+        assert_eq!(for_rust_string("é"), "é");
+        assert_eq!(for_rust_byte_string("é"), r"\xc3\xa9");
+    }
+
+    #[test]
+    fn byte_string_writer_matches() {
+        let input = "test\0\"\\café😀";
+        let mut w = String::new();
+        write_rust_byte_string(&mut w, input).unwrap();
+        assert_eq!(for_rust_byte_string(input), w);
+    }
+}
+
+// ===========================================================================
 // cross-context tests
 // ===========================================================================
 
