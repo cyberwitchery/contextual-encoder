@@ -1,0 +1,12 @@
+[package]
+name = "contextual-encoder"
+version = "0.1.0"
+edition = "2021"
+authors = ["cyber witchery labs"]
+license = "MIT"
+description = "contextual output encoding for xss defense, inspired by the owasp java encoder"
+keywords = ["security", "xss", "encoding", "html", "owasp"]
+categories = ["web-programming", "encoding"]
+
+[lints.rust]
+unsafe_code = "forbid"

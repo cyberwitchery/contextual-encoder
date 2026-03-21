@@ -1,0 +1,77 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+env:
+  CARGO_TERM_COLOR: always
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: set up rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: v0-rust-release
+          cache-targets: true
+
+      - name: run tests
+        run: cargo test
+
+      - name: doc build
+        env:
+          RUSTDOCFLAGS: "--cfg docsrs"
+        run: cargo doc --no-deps
+
+      - name: install sbom tools
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-cyclonedx
+
+      - name: generate sbom
+        run: |
+          (cd /tmp && cargo cyclonedx --manifest-path "$GITHUB_WORKSPACE/Cargo.toml" \
+            --format json \
+            --override-filename "sbom-${{ github.ref_name }}.cdx" \
+            --all-features)
+
+      - name: collect sbom files
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/contextual-encoder-sbom
+          find /tmp -maxdepth 1 -type f -name "sbom-${{ github.ref_name }}.cdx.json" \
+            -exec mv {} /tmp/contextual-encoder-sbom/ \;
+          find "$GITHUB_WORKSPACE" -type f -name "sbom-${{ github.ref_name }}.cdx.json" \
+            -exec mv {} /tmp/contextual-encoder-sbom/ \;
+
+      - name: upload sbom
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-${{ github.ref_name }}
+          path: "/tmp/contextual-encoder-sbom/sbom-${{ github.ref_name }}.cdx.json"
+          if-no-files-found: error
+
+      - name: attach sbom to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: /tmp/contextual-encoder-sbom/sbom-${{ github.ref_name }}.cdx.json
+
+      - name: publish to crates.io
+        run: cargo publish
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
