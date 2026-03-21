@@ -1,20 +1,21 @@
 # contextual-encoder
 
-contextual output encoding for XSS defense, inspired by the
-[OWASP Java Encoder](https://owasp.org/owasp-java-encoder/).
+contextual output encoding for XSS defense and safe literal embedding,
+inspired by the [OWASP Java Encoder](https://owasp.org/owasp-java-encoder/).
 
 ## disclaimer
 
-contextual-encoder is an independent Rust crate for contextual output encoding for XSS
-defense. Its API and security model are inspired by the OWASP Java Encoder.
+contextual-encoder is an independent Rust crate for contextual output encoding.
+Its API and security model are inspired by the OWASP Java Encoder.
 This project is not affiliated with, endorsed by, or maintained by the OWASP
 Foundation.
 
 ## what this is
 
 a zero-dependency Rust library that encodes untrusted strings for safe
-embedding in HTML, JavaScript, CSS, and URI contexts. each function targets a
-specific output context so that only the necessary characters are encoded.
+embedding in web output contexts (HTML, JavaScript, CSS, URI, XML) and
+source literal contexts (Java, Rust). each function targets a specific
+output context so that only the necessary characters are encoded.
 
 ## what this is not
 
@@ -24,13 +25,13 @@ specific output context so that only the necessary characters are encoded.
 - **not a validator.** tag names, attribute names, event handler names, and
   URL schemes must be validated separately. encoding cannot make arbitrary
   names safe.
-- **not a full URL encoder.** `for_uri_component` encodes a component, not
-  a full URL. a `javascript:` URL will be percent-encoded but still execute.
-  always validate the scheme before embedding untrusted URLs.
+- **not a URL validator.** `for_uri_component` encodes a URI component, not
+  a full URL. to embed an untrusted URL, validate its scheme and structure
+  first, then encode for the final sink (for example, an HTML attribute).
 
 ## supported contexts
 
-### HTML / XML
+### HTML
 
 | function | safe for | notes |
 |----------|----------|-------|
@@ -61,7 +62,7 @@ specific output context so that only the necessary characters are encoded.
 
 | function | safe for | notes |
 |----------|----------|-------|
-| `for_javascript` | all JS contexts (universal) | hex-encodes quotes for HTML safety |
+| `for_javascript` | general JS string contexts | caller supplies quotes; hex-encodes quotes for HTML safety |
 | `for_javascript_attribute` | HTML event attributes | does not escape `/` |
 | `for_javascript_block` | `<script>` blocks | uses backslash quote escapes |
 | `for_javascript_source` | standalone .js / JSON files | minimal encoding |
@@ -79,13 +80,18 @@ specific output context so that only the necessary characters are encoded.
 |----------|----------|-------|
 | `for_uri_component` | query params, path segments | RFC 3986 percent-encoding |
 
-### Java
+### additional literal contexts
+
+these encoders are not part of the OWASP Java Encoder's scope. they encode
+untrusted strings for safe embedding in source code literals.
+
+#### Java
 
 | function | safe for | notes |
 |----------|----------|-------|
 | `for_java` | Java string / char literals | octal escapes, surrogate pairs for supplementary plane |
 
-### Rust
+#### Rust
 
 | function | safe for | notes |
 |----------|----------|-------|
@@ -105,8 +111,9 @@ cannot make them safe:
 - **raw CSS selectors / properties** — validate structure separately
 - **HTML comments** — vendor-specific extensions (e.g., IE conditional
   comments) make safe encoding impractical
-- **full untrusted URLs** — encoding preserves `javascript:` schemes;
-  validate the URL scheme and structure first
+- **full untrusted URLs** — `for_uri_component` encodes a component, not a
+  full URL. to embed an untrusted URL, validate its scheme and structure
+  first, then encode for the final sink
 
 ## examples
 
@@ -173,16 +180,20 @@ var x = '<contextual_encoder::for_javascript output>';
 `Hello ${x}`
 ```
 
-**full URLs:** `for_uri_component` encodes a URI component, not an entire URL.
-a `javascript:alert(1)` URL will be properly percent-encoded but will still
-execute. always validate the URL scheme before embedding.
+**full URLs:** `for_uri_component` encodes a URI component, not a full URL.
+to embed an untrusted URL, validate its scheme and structure first, then
+encode for the final sink (for example, an HTML attribute).
 
 **HTML comments:** no HTML comment encoder is provided. HTML comments have
 vendor-specific extensions (e.g., `<!--[if IE]>`) that make safe encoding
 impractical. never embed untrusted data in HTML comments. `for_xml_comment`
 is for XML comments only — it is **not safe for HTML comments**.
 
-## differences from OWASP Java Encoder
+## relationship to OWASP Java Encoder
+
+the web output encoders (HTML, JavaScript, CSS, URI, XML) are modeled on
+the OWASP Java Encoder. the Java and Rust literal encoders are additions
+specific to this crate.
 
 ### exact matches
 - encoding rules for `for_html`, `for_html_content`, `for_html_attribute`,

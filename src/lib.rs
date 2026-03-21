@@ -1,9 +1,9 @@
-//! contextual output encoding for XSS defense.
+//! contextual output encoding for XSS defense and safe literal embedding.
 //!
 //! this crate provides context-aware encoding functions inspired by the
 //! [OWASP Java Encoder](https://owasp.org/owasp-java-encoder/). each function
-//! encodes input for safe embedding in a specific output context (HTML, XML,
-//! JavaScript, CSS, URI, Java, or Rust).
+//! encodes input for safe embedding in a specific output context — web contexts
+//! (HTML, XML, JavaScript, CSS, URI) and source literal contexts (Java, Rust).
 //!
 //! **disclaimer:** contextual-encoder is an independent Rust crate. its API and security model
 //! are inspired by the OWASP Java Encoder, but this project is not affiliated with,
@@ -31,7 +31,7 @@
 //!
 //! # available contexts
 //!
-//! ## HTML / XML
+//! ## HTML
 //!
 //! | function | safe for |
 //! |----------|----------|
@@ -62,7 +62,7 @@
 //!
 //! | function | safe for |
 //! |----------|----------|
-//! | [`for_javascript`] | all JS contexts (universal) |
+//! | [`for_javascript`] | general JS string contexts |
 //! | [`for_javascript_attribute`] | HTML event attributes |
 //! | [`for_javascript_block`] | `<script>` blocks |
 //! | [`for_javascript_source`] | standalone .js files |
@@ -80,16 +80,14 @@
 //! |----------|----------|
 //! | [`for_uri_component`] | URI components (query params, path segments) |
 //!
-//! ## Java
+//! ## additional literal contexts
+//!
+//! these encoders are not part of the OWASP Java Encoder's scope. they encode
+//! untrusted strings for safe embedding in source code literals.
 //!
 //! | function | safe for |
 //! |----------|----------|
 //! | [`for_java`] | Java string / char literals |
-//!
-//! ## Rust
-//!
-//! | function | safe for |
-//! |----------|----------|
 //! | [`for_rust_string`] | Rust string literals (`"..."`) |
 //! | [`for_rust_char`] | Rust char literals (`'...'`) |
 //! | [`for_rust_byte_string`] | Rust byte string literals (`b"..."`) |
@@ -111,8 +109,8 @@
 //!   as a tag name, attribute name, or event handler name. validate these
 //!   against a whitelist.
 //! - **full URLs must be validated separately.** `for_uri_component` encodes
-//!   a component, not a full URL. a `javascript:` URL will be encoded but
-//!   still execute. always validate the scheme.
+//!   a component, not a full URL. to embed an untrusted URL, validate its
+//!   scheme and structure first, then encode for the final sink.
 //! - **template literals.** the JavaScript encoders do not encode backticks.
 //!   never embed untrusted data directly in ES2015+ template literals.
 //! - **grave accent.** unpatched Internet Explorer treats `` ` `` as an
