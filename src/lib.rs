@@ -18,15 +18,19 @@
 //!
 //! // safe for HTML text content and quoted attributes
 //! let html_safe = for_html(user_input);
+//! assert!(html_safe.contains("&lt;script&gt;"));
 //!
 //! // safe for javascript string literals (universal)
 //! let js_safe = for_javascript(user_input);
+//! assert!(js_safe.contains(r"<\/script>"));
 //!
 //! // safe for quoted CSS string values
 //! let css_safe = for_css_string(user_input);
+//! assert!(css_safe.contains(r"\3c"));
 //!
 //! // safe as a URI query parameter value
 //! let uri_safe = for_uri_component(user_input);
+//! assert!(uri_safe.contains("%3C"));
 //! ```
 //!
 //! # available contexts
@@ -167,3 +171,116 @@ pub use xml::{
     for_xml_comment, for_xml_content, write_cdata, write_xml, write_xml11, write_xml11_attribute,
     write_xml11_content, write_xml_attribute, write_xml_comment, write_xml_content,
 };
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn empty_string_returns_empty() {
+        assert_eq!(for_html(""), "");
+        assert_eq!(for_html_content(""), "");
+        assert_eq!(for_html_attribute(""), "");
+        assert_eq!(for_html_unquoted_attribute(""), "");
+        assert_eq!(for_javascript(""), "");
+        assert_eq!(for_javascript_attribute(""), "");
+        assert_eq!(for_javascript_block(""), "");
+        assert_eq!(for_javascript_source(""), "");
+        assert_eq!(for_css_string(""), "");
+        assert_eq!(for_css_url(""), "");
+        assert_eq!(for_uri_component(""), "");
+        assert_eq!(for_xml(""), "");
+        assert_eq!(for_xml_content(""), "");
+        assert_eq!(for_xml_attribute(""), "");
+        assert_eq!(for_xml_comment(""), "");
+        assert_eq!(for_cdata(""), "");
+        assert_eq!(for_xml11(""), "");
+        assert_eq!(for_xml11_content(""), "");
+        assert_eq!(for_xml11_attribute(""), "");
+        assert_eq!(for_java(""), "");
+        assert_eq!(for_rust_string(""), "");
+        assert_eq!(for_rust_char(""), "");
+        assert_eq!(for_rust_byte_string(""), "");
+    }
+
+    #[test]
+    fn empty_string_writer_variants() {
+        let mut buf = String::new();
+        write_html(&mut buf, "").unwrap();
+        assert_eq!(buf, "");
+
+        buf.clear();
+        write_javascript(&mut buf, "").unwrap();
+        assert_eq!(buf, "");
+
+        buf.clear();
+        write_css_string(&mut buf, "").unwrap();
+        assert_eq!(buf, "");
+
+        buf.clear();
+        write_uri_component(&mut buf, "").unwrap();
+        assert_eq!(buf, "");
+    }
+
+    // two-byte: é (U+00E9), ñ (U+00F1)
+    // three-byte: 世 (U+4E16), € (U+20AC)
+    // four-byte: 😀 (U+1F600), 𐍈 (U+10348)
+
+    #[test]
+    fn multibyte_utf8_html() {
+        assert_eq!(for_html("café"), "café");
+        assert_eq!(for_html("世界"), "世界");
+        assert_eq!(for_html("😀"), "😀");
+        assert_eq!(for_html("é<世>&😀"), "é&lt;世&gt;&amp;😀");
+    }
+
+    #[test]
+    fn multibyte_utf8_javascript() {
+        assert_eq!(for_javascript("café"), "café");
+        assert_eq!(for_javascript("世界"), "世界");
+        assert_eq!(for_javascript("😀"), "😀");
+    }
+
+    #[test]
+    fn multibyte_utf8_css_string() {
+        assert_eq!(for_css_string("café"), "café");
+        assert_eq!(for_css_string("世界"), "世界");
+        assert_eq!(for_css_string("😀"), "😀");
+    }
+
+    #[test]
+    fn multibyte_utf8_uri_component() {
+        assert_eq!(for_uri_component("é"), "%C3%A9");
+        assert_eq!(for_uri_component("世"), "%E4%B8%96");
+        assert_eq!(for_uri_component("😀"), "%F0%9F%98%80");
+        assert_eq!(for_uri_component("café"), "caf%C3%A9");
+    }
+
+    #[test]
+    fn multibyte_utf8_rust_byte_string() {
+        assert_eq!(for_rust_byte_string("é"), r"\xc3\xa9");
+        assert_eq!(for_rust_byte_string("世"), r"\xe4\xb8\x96");
+        assert_eq!(for_rust_byte_string("😀"), r"\xf0\x9f\x98\x80");
+    }
+
+    #[test]
+    fn multibyte_utf8_rust_string_passthrough() {
+        assert_eq!(for_rust_string("café"), "café");
+        assert_eq!(for_rust_string("世界"), "世界");
+        assert_eq!(for_rust_string("😀"), "😀");
+    }
+
+    #[test]
+    fn multibyte_utf8_java() {
+        assert_eq!(for_java("café"), "café");
+        assert_eq!(for_java("世界"), "世界");
+        assert_eq!(for_java("😀"), "\\ud83d\\ude00");
+    }
+
+    #[test]
+    fn multibyte_utf8_xml() {
+        assert_eq!(for_xml("café"), "café");
+        assert_eq!(for_xml("世界"), "世界");
+        assert_eq!(for_xml("😀"), "😀");
+    }
+}
