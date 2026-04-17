@@ -99,6 +99,14 @@ untrusted strings for safe embedding in source code literals.
 | `for_rust_char` | Rust char literals (`'...'`) | escapes `'` instead of `"` |
 | `for_rust_byte_string` | Rust byte string literals (`b"..."`) | non-ASCII → `\xHH` per UTF-8 byte |
 
+#### Python
+
+| function | safe for | notes |
+|----------|----------|-------|
+| `for_python_string` | Python string literals (`"..."` or `'...'`) | escapes both quotes, non-ASCII passes through |
+| `for_python_bytes` | Python bytes literals (`b"..."` or `b'...'`) | non-ASCII → `\xHH` per UTF-8 byte |
+| `for_python_raw_string` | Python raw string literals (`r"..."` or `r'...'`) | replaces quotes/controls with space, handles trailing backslash |
+
 ## unsupported / dangerous contexts
 
 the following contexts are **intentionally not supported** because encoding

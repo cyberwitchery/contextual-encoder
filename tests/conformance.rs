@@ -1250,6 +1250,269 @@ mod rust_literals {
 }
 
 // ===========================================================================
+// Python literal context tests
+// ===========================================================================
+
+mod python_literals {
+    use super::*;
+
+    // -- for_python_string --
+
+    #[test]
+    fn string_passthrough() {
+        assert_eq!(for_python_string("hello world"), "hello world");
+        assert_eq!(for_python_string(""), "");
+        assert_eq!(
+            for_python_string("caf\u{00e9} \u{65E5}\u{672C}\u{8A9E} \u{1F600}"),
+            "caf\u{00e9} \u{65E5}\u{672C}\u{8A9E} \u{1F600}"
+        );
+    }
+
+    #[test]
+    fn string_escapes_both_quotes() {
+        assert_eq!(for_python_string(r#"a"b"#), r#"a\"b"#);
+        assert_eq!(for_python_string("a'b"), r"a\'b");
+        assert_eq!(for_python_string(r#"say "it's""#), r#"say \"it\'s\""#);
+    }
+
+    #[test]
+    fn string_all_named_escapes() {
+        assert_eq!(for_python_string("\x07"), "\\a");
+        assert_eq!(for_python_string("\x08"), "\\b");
+        assert_eq!(for_python_string("\t"), "\\t");
+        assert_eq!(for_python_string("\n"), "\\n");
+        assert_eq!(for_python_string("\x0B"), "\\v");
+        assert_eq!(for_python_string("\x0C"), "\\f");
+        assert_eq!(for_python_string("\r"), "\\r");
+    }
+
+    #[test]
+    fn string_hex_for_controls() {
+        assert_eq!(for_python_string("\x00"), "\\x00");
+        assert_eq!(for_python_string("\x01"), "\\x01");
+        assert_eq!(for_python_string("\x06"), "\\x06");
+        assert_eq!(for_python_string("\x0E"), "\\x0e");
+        assert_eq!(for_python_string("\x1F"), "\\x1f");
+        assert_eq!(for_python_string("\x7F"), "\\x7f");
+    }
+
+    #[test]
+    fn string_backslash() {
+        assert_eq!(for_python_string(r"a\b"), r"a\\b");
+    }
+
+    #[test]
+    fn string_nonchars_replaced() {
+        assert_eq!(for_python_string("\u{FDD0}"), " ");
+        assert_eq!(for_python_string("\u{FFFE}"), " ");
+    }
+
+    #[test]
+    fn string_supplementary_plane_passes_through() {
+        // python 3 source is UTF-8 — no surrogate pairs needed
+        assert_eq!(for_python_string("\u{1F600}"), "\u{1F600}");
+        assert_eq!(for_python_string("\u{10000}"), "\u{10000}");
+    }
+
+    #[test]
+    fn string_xss_payload() {
+        // python string encoder does not encode < / > — they are not special
+        // in python string literals
+        assert_eq!(
+            for_python_string("<script>alert(\"xss\")</script>"),
+            "<script>alert(\\\"xss\\\")</script>"
+        );
+    }
+
+    #[test]
+    fn string_writer_matches() {
+        let input = "test\x00\"'\\\ncaf\u{00e9}\u{1F600}";
+        let mut w = String::new();
+        write_python_string(&mut w, input).unwrap();
+        assert_eq!(for_python_string(input), w);
+    }
+
+    // -- for_python_bytes --
+
+    #[test]
+    fn bytes_ascii_passthrough() {
+        assert_eq!(for_python_bytes("hello world"), "hello world");
+        assert_eq!(for_python_bytes(""), "");
+    }
+
+    #[test]
+    fn bytes_escapes_both_quotes() {
+        assert_eq!(for_python_bytes(r#"a"b"#), r#"a\"b"#);
+        assert_eq!(for_python_bytes("a'b"), r"a\'b");
+    }
+
+    #[test]
+    fn bytes_all_named_escapes() {
+        assert_eq!(for_python_bytes("\x07"), "\\a");
+        assert_eq!(for_python_bytes("\x08"), "\\b");
+        assert_eq!(for_python_bytes("\t"), "\\t");
+        assert_eq!(for_python_bytes("\n"), "\\n");
+        assert_eq!(for_python_bytes("\x0B"), "\\v");
+        assert_eq!(for_python_bytes("\x0C"), "\\f");
+        assert_eq!(for_python_bytes("\r"), "\\r");
+    }
+
+    #[test]
+    fn bytes_hex_for_controls() {
+        assert_eq!(for_python_bytes("\x00"), "\\x00");
+        assert_eq!(for_python_bytes("\x01"), "\\x01");
+        assert_eq!(for_python_bytes("\x7F"), "\\x7f");
+    }
+
+    #[test]
+    fn bytes_non_ascii_as_utf8_bytes() {
+        // é = U+00E9 → UTF-8: C3 A9
+        assert_eq!(for_python_bytes("caf\u{00e9}"), r"caf\xc3\xa9");
+        // 日 = U+65E5 → UTF-8: E6 97 A5
+        assert_eq!(for_python_bytes("\u{65E5}"), r"\xe6\x97\xa5");
+        // 😀 = U+1F600 → UTF-8: F0 9F 98 80
+        assert_eq!(for_python_bytes("\u{1F600}"), r"\xf0\x9f\x98\x80");
+    }
+
+    #[test]
+    fn bytes_nonchars_as_bytes() {
+        // non-characters get byte-encoded (not replaced with space)
+        // U+FDD0 → UTF-8: EF B7 90
+        assert_eq!(for_python_bytes("\u{FDD0}"), r"\xef\xb7\x90");
+    }
+
+    #[test]
+    fn bytes_vs_string_non_ascii() {
+        // string passes non-ASCII through; bytes encodes it
+        assert_eq!(for_python_string("\u{00e9}"), "\u{00e9}");
+        assert_eq!(for_python_bytes("\u{00e9}"), r"\xc3\xa9");
+    }
+
+    #[test]
+    fn bytes_writer_matches() {
+        let input = "test\x00\"'\\caf\u{00e9}\u{1F600}";
+        let mut w = String::new();
+        write_python_bytes(&mut w, input).unwrap();
+        assert_eq!(for_python_bytes(input), w);
+    }
+
+    // -- for_python_raw_string --
+
+    #[test]
+    fn raw_passthrough() {
+        assert_eq!(for_python_raw_string("hello world"), "hello world");
+        assert_eq!(for_python_raw_string(""), "");
+    }
+
+    #[test]
+    fn raw_quotes_replaced_with_space() {
+        assert_eq!(for_python_raw_string(r#"a"b"#), "a b");
+        assert_eq!(for_python_raw_string("a'b"), "a b");
+        assert_eq!(
+            for_python_raw_string(r#"it "won't" work"#),
+            "it  won t  work"
+        );
+    }
+
+    #[test]
+    fn raw_controls_replaced_with_space() {
+        assert_eq!(for_python_raw_string("a\x00b"), "a b");
+        assert_eq!(for_python_raw_string("a\tb"), "a b");
+        assert_eq!(for_python_raw_string("a\nb"), "a b");
+        assert_eq!(for_python_raw_string("a\x7Fb"), "a b");
+    }
+
+    #[test]
+    fn raw_backslashes_in_middle_pass_through() {
+        assert_eq!(for_python_raw_string(r"a\b\c"), r"a\b\c");
+        assert_eq!(for_python_raw_string(r"C:\Users\test"), r"C:\Users\test");
+    }
+
+    #[test]
+    fn raw_trailing_even_backslashes_ok() {
+        assert_eq!(for_python_raw_string(r"ab\\"), r"ab\\");
+    }
+
+    #[test]
+    fn raw_trailing_odd_backslash_replaced() {
+        // single trailing backslash
+        assert_eq!(for_python_raw_string(r"ab\"), "ab ");
+        // three trailing backslashes → last replaced
+        assert_eq!(for_python_raw_string(r"ab\\\"), "ab\\\\ ");
+    }
+
+    #[test]
+    fn raw_just_backslash() {
+        assert_eq!(for_python_raw_string(r"\"), " ");
+    }
+
+    #[test]
+    fn raw_nonchars_replaced() {
+        assert_eq!(for_python_raw_string("\u{FDD0}"), " ");
+        assert_eq!(for_python_raw_string("\u{FFFE}"), " ");
+    }
+
+    #[test]
+    fn raw_non_ascii_passes_through() {
+        assert_eq!(for_python_raw_string("café"), "café");
+        assert_eq!(for_python_raw_string("日本語"), "日本語");
+        assert_eq!(for_python_raw_string("😀"), "😀");
+    }
+
+    #[test]
+    fn raw_regex_pattern() {
+        // typical raw string use case: regex patterns
+        assert_eq!(for_python_raw_string(r"\d+\.\d+"), r"\d+\.\d+");
+    }
+
+    #[test]
+    fn raw_writer_matches() {
+        let input = "test\x00path\\to\\file";
+        let mut w = String::new();
+        write_python_raw_string(&mut w, input).unwrap();
+        assert_eq!(for_python_raw_string(input), w);
+    }
+
+    // -- Python vs other languages --
+
+    #[test]
+    fn python_vs_java_quote_handling() {
+        // both escape both quotes
+        assert_eq!(for_python_string("a'b"), r"a\'b");
+        assert_eq!(for_java("a'b"), r"a\'b");
+    }
+
+    #[test]
+    fn python_vs_go_supplementary_plane() {
+        // both pass supplementary plane through (UTF-8 source)
+        assert_eq!(for_python_string("\u{1F600}"), "\u{1F600}");
+        assert_eq!(for_go_string("\u{1F600}"), "\u{1F600}");
+        // java uses surrogate pairs
+        assert_eq!(for_java("\u{1F600}"), "\\ud83d\\ude00");
+    }
+
+    #[test]
+    fn python_has_alert_and_vtab() {
+        // python has \a and \v like go (java does not)
+        assert_eq!(for_python_string("\x07"), "\\a");
+        assert_eq!(for_python_string("\x0B"), "\\v");
+        assert_eq!(for_go_string("\x07"), "\\a");
+        assert_eq!(for_go_string("\x0B"), "\\v");
+    }
+
+    #[test]
+    fn python_string_vs_bytes_vs_raw() {
+        let input = "café\n";
+        // string: non-ASCII passes through, \n escaped
+        assert_eq!(for_python_string(input), "café\\n");
+        // bytes: non-ASCII byte-encoded, \n escaped
+        assert_eq!(for_python_bytes(input), "caf\\xc3\\xa9\\n");
+        // raw: \n replaced with space (control char), non-ASCII passes through
+        assert_eq!(for_python_raw_string(input), "café ");
+    }
+}
+
+// ===========================================================================
 // cross-context tests
 // ===========================================================================
 
