@@ -25,7 +25,7 @@
 
 use std::fmt;
 
-use crate::engine::{encode_loop, is_unicode_noncharacter};
+use crate::engine::{encode_loop, is_unicode_noncharacter, write_utf8_hex_bytes};
 
 // ---------------------------------------------------------------------------
 // for_go_string — safe for Go interpreted string literals ("...")
@@ -187,14 +187,7 @@ fn write_go_byte_string_encoded<W: fmt::Write>(
         '"' => out.write_str("\\\""),
         '\\' => out.write_str("\\\\"),
         // non-ASCII → encode each UTF-8 byte
-        c if !c.is_ascii() => {
-            let mut buf = [0u8; 4];
-            let encoded = c.encode_utf8(&mut buf);
-            for b in encoded.as_bytes() {
-                write!(out, "\\x{b:02x}")?;
-            }
-            Ok(())
-        }
+        c if !c.is_ascii() => write_utf8_hex_bytes(out, c),
         // other C0 controls and DEL
         c => write!(out, "\\x{:02x}", c as u32),
     }
