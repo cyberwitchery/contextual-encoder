@@ -92,6 +92,9 @@
 //! | function | safe for |
 //! |----------|----------|
 //! | [`for_java`] | Java string / char literals |
+//! | [`for_go_string`] | Go interpreted string literals (`"..."`) |
+//! | [`for_go_char`] | Go rune literals (`'...'`) |
+//! | [`for_go_byte_string`] | Go byte-explicit string literals (`[]byte("...")`) |
 //! | [`for_rust_string`] | Rust string literals (`"..."`) |
 //! | [`for_rust_char`] | Rust char literals (`'...'`) |
 //! | [`for_rust_byte_string`] | Rust byte string literals (`b"..."`) |
@@ -141,6 +144,7 @@
 //! ```
 
 pub mod css;
+pub mod go;
 pub mod html;
 pub mod java;
 pub mod javascript;
@@ -152,6 +156,10 @@ mod engine;
 
 // convenience re-exports — users can `use contextual_encoder::for_html` directly
 pub use css::{for_css_string, for_css_url, write_css_string, write_css_url};
+pub use go::{
+    for_go_byte_string, for_go_char, for_go_string, write_go_byte_string, write_go_char,
+    write_go_string,
+};
 pub use html::{
     for_html, for_html_attribute, for_html_content, for_html_unquoted_attribute, write_html,
     write_html_attribute, write_html_content, write_html_unquoted_attribute,
@@ -198,6 +206,9 @@ mod tests {
         assert_eq!(for_xml11_content(""), "");
         assert_eq!(for_xml11_attribute(""), "");
         assert_eq!(for_java(""), "");
+        assert_eq!(for_go_string(""), "");
+        assert_eq!(for_go_char(""), "");
+        assert_eq!(for_go_byte_string(""), "");
         assert_eq!(for_rust_string(""), "");
         assert_eq!(for_rust_char(""), "");
         assert_eq!(for_rust_byte_string(""), "");
@@ -254,6 +265,20 @@ mod tests {
         assert_eq!(for_uri_component("世"), "%E4%B8%96");
         assert_eq!(for_uri_component("😀"), "%F0%9F%98%80");
         assert_eq!(for_uri_component("café"), "caf%C3%A9");
+    }
+
+    #[test]
+    fn multibyte_utf8_go_string_passthrough() {
+        assert_eq!(for_go_string("caf\u{00e9}"), "caf\u{00e9}");
+        assert_eq!(for_go_string("\u{4e16}\u{754c}"), "\u{4e16}\u{754c}");
+        assert_eq!(for_go_string("\u{1F600}"), "\u{1F600}");
+    }
+
+    #[test]
+    fn multibyte_utf8_go_byte_string() {
+        assert_eq!(for_go_byte_string("\u{00e9}"), r"\xc3\xa9");
+        assert_eq!(for_go_byte_string("\u{4e16}"), r"\xe4\xb8\x96");
+        assert_eq!(for_go_byte_string("\u{1F600}"), r"\xf0\x9f\x98\x80");
     }
 
     #[test]

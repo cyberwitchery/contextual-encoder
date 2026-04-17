@@ -880,6 +880,208 @@ mod java {
 }
 
 // ===========================================================================
+// Go literal context tests
+// ===========================================================================
+
+mod go_literals {
+    use super::*;
+
+    // -- for_go_string --
+
+    #[test]
+    fn string_passthrough() {
+        assert_eq!(for_go_string("hello world"), "hello world");
+        assert_eq!(for_go_string(""), "");
+        assert_eq!(
+            for_go_string("caf\u{00e9} \u{65E5}\u{672C}\u{8A9E} \u{1F600}"),
+            "caf\u{00e9} \u{65E5}\u{672C}\u{8A9E} \u{1F600}"
+        );
+    }
+
+    #[test]
+    fn string_escapes_double_quote_not_single() {
+        assert_eq!(for_go_string(r#"a"b"#), r#"a\"b"#);
+        assert_eq!(for_go_string("a'b"), "a'b");
+    }
+
+    #[test]
+    fn string_all_named_escapes() {
+        assert_eq!(for_go_string("\x07"), "\\a");
+        assert_eq!(for_go_string("\x08"), "\\b");
+        assert_eq!(for_go_string("\t"), "\\t");
+        assert_eq!(for_go_string("\n"), "\\n");
+        assert_eq!(for_go_string("\x0B"), "\\v");
+        assert_eq!(for_go_string("\x0C"), "\\f");
+        assert_eq!(for_go_string("\r"), "\\r");
+    }
+
+    #[test]
+    fn string_hex_for_controls() {
+        assert_eq!(for_go_string("\x00"), "\\x00");
+        assert_eq!(for_go_string("\x01"), "\\x01");
+        assert_eq!(for_go_string("\x06"), "\\x06");
+        assert_eq!(for_go_string("\x0E"), "\\x0e");
+        assert_eq!(for_go_string("\x1F"), "\\x1f");
+        assert_eq!(for_go_string("\x7F"), "\\x7f");
+    }
+
+    #[test]
+    fn string_backslash() {
+        assert_eq!(for_go_string(r"a\b"), r"a\\b");
+    }
+
+    #[test]
+    fn string_nonchars_replaced() {
+        assert_eq!(for_go_string("\u{FDD0}"), " ");
+        assert_eq!(for_go_string("\u{FFFE}"), " ");
+    }
+
+    #[test]
+    fn string_supplementary_plane_passes_through() {
+        // Go source is UTF-8 — no surrogate pairs needed
+        assert_eq!(for_go_string("\u{1F600}"), "\u{1F600}");
+        assert_eq!(for_go_string("\u{10000}"), "\u{10000}");
+    }
+
+    #[test]
+    fn string_writer_matches() {
+        let input = "test\x00\"\\\ncaf\u{00e9}\u{1F600}";
+        let mut w = String::new();
+        write_go_string(&mut w, input).unwrap();
+        assert_eq!(for_go_string(input), w);
+    }
+
+    // -- for_go_char --
+
+    #[test]
+    fn char_passthrough() {
+        assert_eq!(for_go_char("hello world"), "hello world");
+        assert_eq!(for_go_char("caf\u{00e9}"), "caf\u{00e9}");
+    }
+
+    #[test]
+    fn char_escapes_single_quote_not_double() {
+        assert_eq!(for_go_char("a'b"), r"a\'b");
+        assert_eq!(for_go_char(r#"a"b"#), r#"a"b"#);
+    }
+
+    #[test]
+    fn char_all_named_escapes() {
+        assert_eq!(for_go_char("\x07"), "\\a");
+        assert_eq!(for_go_char("\x08"), "\\b");
+        assert_eq!(for_go_char("\t"), "\\t");
+        assert_eq!(for_go_char("\n"), "\\n");
+        assert_eq!(for_go_char("\x0B"), "\\v");
+        assert_eq!(for_go_char("\x0C"), "\\f");
+        assert_eq!(for_go_char("\r"), "\\r");
+    }
+
+    #[test]
+    fn char_hex_for_controls() {
+        assert_eq!(for_go_char("\x01"), "\\x01");
+        assert_eq!(for_go_char("\x7F"), "\\x7f");
+    }
+
+    #[test]
+    fn char_nonchars_replaced() {
+        assert_eq!(for_go_char("\u{FDD0}"), " ");
+    }
+
+    #[test]
+    fn char_writer_matches() {
+        let input = "test\x00'\\\ncaf\u{00e9}";
+        let mut w = String::new();
+        write_go_char(&mut w, input).unwrap();
+        assert_eq!(for_go_char(input), w);
+    }
+
+    // -- for_go_byte_string --
+
+    #[test]
+    fn byte_string_ascii_passthrough() {
+        assert_eq!(for_go_byte_string("hello world"), "hello world");
+        assert_eq!(for_go_byte_string(""), "");
+    }
+
+    #[test]
+    fn byte_string_escapes_double_quote_not_single() {
+        assert_eq!(for_go_byte_string(r#"a"b"#), r#"a\"b"#);
+        assert_eq!(for_go_byte_string("a'b"), "a'b");
+    }
+
+    #[test]
+    fn byte_string_all_named_escapes() {
+        assert_eq!(for_go_byte_string("\x07"), "\\a");
+        assert_eq!(for_go_byte_string("\x08"), "\\b");
+        assert_eq!(for_go_byte_string("\t"), "\\t");
+        assert_eq!(for_go_byte_string("\n"), "\\n");
+        assert_eq!(for_go_byte_string("\x0B"), "\\v");
+        assert_eq!(for_go_byte_string("\x0C"), "\\f");
+        assert_eq!(for_go_byte_string("\r"), "\\r");
+    }
+
+    #[test]
+    fn byte_string_hex_for_controls() {
+        assert_eq!(for_go_byte_string("\x00"), "\\x00");
+        assert_eq!(for_go_byte_string("\x01"), "\\x01");
+        assert_eq!(for_go_byte_string("\x7F"), "\\x7f");
+    }
+
+    #[test]
+    fn byte_string_non_ascii_as_utf8_bytes() {
+        // é = U+00E9 → UTF-8: C3 A9
+        assert_eq!(for_go_byte_string("caf\u{00e9}"), r"caf\xc3\xa9");
+        // 日 = U+65E5 → UTF-8: E6 97 A5
+        assert_eq!(for_go_byte_string("\u{65E5}"), r"\xe6\x97\xa5");
+        // 😀 = U+1F600 → UTF-8: F0 9F 98 80
+        assert_eq!(for_go_byte_string("\u{1F600}"), r"\xf0\x9f\x98\x80");
+    }
+
+    #[test]
+    fn byte_string_nonchars_as_bytes() {
+        // non-characters get byte-encoded (not replaced with space)
+        // U+FDD0 → UTF-8: EF B7 90
+        assert_eq!(for_go_byte_string("\u{FDD0}"), r"\xef\xb7\x90");
+    }
+
+    #[test]
+    fn byte_string_vs_string_non_ascii() {
+        // string passes non-ASCII through; byte string encodes it
+        assert_eq!(for_go_string("\u{00e9}"), "\u{00e9}");
+        assert_eq!(for_go_byte_string("\u{00e9}"), r"\xc3\xa9");
+    }
+
+    #[test]
+    fn byte_string_writer_matches() {
+        let input = "test\x00\"\\caf\u{00e9}\u{1F600}";
+        let mut w = String::new();
+        write_go_byte_string(&mut w, input).unwrap();
+        assert_eq!(for_go_byte_string(input), w);
+    }
+
+    // -- Go vs Java: key differences --
+    // Go strings are UTF-8 and don't need surrogate pairs for supplementary
+    // plane characters. Go has \a and \v named escapes that Java lacks.
+    // Go uses \xHH for unnamed controls (not octal like Java).
+
+    #[test]
+    fn go_vs_java_supplementary_plane() {
+        // Go passes through; Java uses surrogate pairs
+        assert_eq!(for_go_string("\u{1F600}"), "\u{1F600}");
+        assert_eq!(for_java("\u{1F600}"), "\\ud83d\\ude00");
+    }
+
+    #[test]
+    fn go_has_alert_and_vtab() {
+        // Go has \a and \v; Java does not (Java uses octal for these)
+        assert_eq!(for_go_string("\x07"), "\\a");
+        assert_eq!(for_go_string("\x0B"), "\\v");
+        assert_eq!(for_java("\x07a"), "\\7a");
+        assert_eq!(for_java("\x0Ba"), "\\13a");
+    }
+}
+
+// ===========================================================================
 // Rust literal context tests
 // ===========================================================================
 
