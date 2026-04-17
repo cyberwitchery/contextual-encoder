@@ -36,6 +36,16 @@ where
     Ok(())
 }
 
+/// writes each UTF-8 byte of a non-ASCII character as `\xHH`.
+pub(crate) fn write_utf8_hex_bytes<W: fmt::Write>(out: &mut W, c: char) -> fmt::Result {
+    let mut buf = [0u8; 4];
+    let encoded = c.encode_utf8(&mut buf);
+    for b in encoded.as_bytes() {
+        write!(out, "\\x{b:02x}")?;
+    }
+    Ok(())
+}
+
 /// returns true if the character is invalid in XML 1.0 output and should be
 /// replaced (with space or dash depending on context).
 ///
