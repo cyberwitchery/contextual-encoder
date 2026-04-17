@@ -2,6 +2,9 @@
 
 ## [unreleased]
 
+- Go literal encoders: `for_go_string`, `for_go_char`, `for_go_byte_string`
+- writer-based variants for all Go encoders
+
 ## [0.2.0]
 
 - XML 1.0 aliases: `for_xml`, `for_xml_content`, `for_xml_attribute`
