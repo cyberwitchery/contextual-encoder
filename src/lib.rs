@@ -98,6 +98,9 @@
 //! | [`for_rust_string`] | Rust string literals (`"..."`) |
 //! | [`for_rust_char`] | Rust char literals (`'...'`) |
 //! | [`for_rust_byte_string`] | Rust byte string literals (`b"..."`) |
+//! | [`for_python_string`] | Python string literals (`"..."` or `'...'`) |
+//! | [`for_python_bytes`] | Python bytes literals (`b"..."` or `b'...'`) |
+//! | [`for_python_raw_string`] | Python raw string literals (`r"..."` or `r'...'`) |
 //!
 //! # security model
 //!
@@ -148,6 +151,7 @@ pub mod go;
 pub mod html;
 pub mod java;
 pub mod javascript;
+pub mod python;
 pub mod rust;
 pub mod uri;
 pub mod xml;
@@ -168,6 +172,10 @@ pub use java::{for_java, write_java};
 pub use javascript::{
     for_javascript, for_javascript_attribute, for_javascript_block, for_javascript_source,
     write_javascript, write_javascript_attribute, write_javascript_block, write_javascript_source,
+};
+pub use python::{
+    for_python_bytes, for_python_raw_string, for_python_string, write_python_bytes,
+    write_python_raw_string, write_python_string,
 };
 pub use rust::{
     for_rust_byte_string, for_rust_char, for_rust_string, write_rust_byte_string, write_rust_char,
@@ -212,6 +220,9 @@ mod tests {
         assert_eq!(for_rust_string(""), "");
         assert_eq!(for_rust_char(""), "");
         assert_eq!(for_rust_byte_string(""), "");
+        assert_eq!(for_python_string(""), "");
+        assert_eq!(for_python_bytes(""), "");
+        assert_eq!(for_python_raw_string(""), "");
     }
 
     #[test]
@@ -293,6 +304,27 @@ mod tests {
         assert_eq!(for_rust_string("café"), "café");
         assert_eq!(for_rust_string("世界"), "世界");
         assert_eq!(for_rust_string("😀"), "😀");
+    }
+
+    #[test]
+    fn multibyte_utf8_python_string_passthrough() {
+        assert_eq!(for_python_string("café"), "café");
+        assert_eq!(for_python_string("世界"), "世界");
+        assert_eq!(for_python_string("😀"), "😀");
+    }
+
+    #[test]
+    fn multibyte_utf8_python_bytes() {
+        assert_eq!(for_python_bytes("\u{00e9}"), r"\xc3\xa9");
+        assert_eq!(for_python_bytes("\u{4e16}"), r"\xe4\xb8\x96");
+        assert_eq!(for_python_bytes("\u{1F600}"), r"\xf0\x9f\x98\x80");
+    }
+
+    #[test]
+    fn multibyte_utf8_python_raw_string_passthrough() {
+        assert_eq!(for_python_raw_string("café"), "café");
+        assert_eq!(for_python_raw_string("世界"), "世界");
+        assert_eq!(for_python_raw_string("😀"), "😀");
     }
 
     #[test]
