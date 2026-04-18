@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+- C literal encoders: `for_c_string`, `for_c_char` with trigraph avoidance and octal escapes for controls
+- writer-based variants for all C encoders
 - SQL string literal encoders: `for_sql` (standard double-quote escaping), `for_sql_backslash` (MySQL/MariaDB backslash escaping)
 - writer-based variants for all SQL encoders
 - Python literal encoders: `for_python_string`, `for_python_bytes`, `for_python_raw_string`

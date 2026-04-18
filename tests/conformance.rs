@@ -1513,6 +1513,207 @@ mod python_literals {
 }
 
 // ===========================================================================
+// C literal context tests
+// ===========================================================================
+
+mod c_literals {
+    use super::*;
+
+    // -- for_c_string --
+
+    #[test]
+    fn string_passthrough() {
+        assert_eq!(for_c_string("hello world"), "hello world");
+        assert_eq!(for_c_string(""), "");
+        assert_eq!(
+            for_c_string("caf\u{00e9} \u{65E5}\u{672C}\u{8A9E} \u{1F600}"),
+            "caf\u{00e9} \u{65E5}\u{672C}\u{8A9E} \u{1F600}"
+        );
+    }
+
+    #[test]
+    fn string_escapes_double_quote_not_single() {
+        assert_eq!(for_c_string(r#"a"b"#), r#"a\"b"#);
+        assert_eq!(for_c_string("a'b"), "a'b");
+    }
+
+    #[test]
+    fn string_all_named_escapes() {
+        assert_eq!(for_c_string("\x07"), "\\a");
+        assert_eq!(for_c_string("\x08"), "\\b");
+        assert_eq!(for_c_string("\t"), "\\t");
+        assert_eq!(for_c_string("\n"), "\\n");
+        assert_eq!(for_c_string("\x0B"), "\\v");
+        assert_eq!(for_c_string("\x0C"), "\\f");
+        assert_eq!(for_c_string("\r"), "\\r");
+    }
+
+    #[test]
+    fn string_octal_for_controls() {
+        // C uses octal (not hex) to avoid greedy \x parsing
+        assert_eq!(for_c_string("\x00"), "\\000");
+        assert_eq!(for_c_string("\x01"), "\\001");
+        assert_eq!(for_c_string("\x06"), "\\006");
+        assert_eq!(for_c_string("\x0E"), "\\016");
+        assert_eq!(for_c_string("\x1F"), "\\037");
+        assert_eq!(for_c_string("\x7F"), "\\177");
+    }
+
+    #[test]
+    fn string_backslash() {
+        assert_eq!(for_c_string(r"a\b"), r"a\\b");
+    }
+
+    #[test]
+    fn string_trigraph_avoidance() {
+        // all nine trigraph sequences must be broken
+        assert_eq!(for_c_string("??="), "\\?\\?="); // ??= → #
+        assert_eq!(for_c_string("??/"), "\\?\\?/"); // ??/ → backslash
+        assert_eq!(for_c_string("??("), "\\?\\?("); // ??( → [
+        assert_eq!(for_c_string("??)"), "\\?\\?)"); // ??) → ]
+        assert_eq!(for_c_string("??'"), "\\?\\?'"); // ??' → ^
+        assert_eq!(for_c_string("??<"), "\\?\\?<"); // ??< → {
+        assert_eq!(for_c_string("??>"), "\\?\\?>"); // ??> → }
+        assert_eq!(for_c_string("??!"), "\\?\\?!"); // ??! → |
+        assert_eq!(for_c_string("??-"), "\\?\\?-"); // ??- → ~
+    }
+
+    #[test]
+    fn string_trigraph_in_context() {
+        // trigraph embedded in normal text
+        assert_eq!(
+            for_c_string("printf(\"what??!\\n\")"),
+            "printf(\\\"what\\?\\?!\\\\n\\\")"
+        );
+    }
+
+    #[test]
+    fn string_consecutive_question_marks() {
+        assert_eq!(for_c_string("???"), "\\?\\?\\?");
+        assert_eq!(for_c_string("????"), "\\?\\?\\?\\?");
+    }
+
+    #[test]
+    fn string_single_question_mark() {
+        assert_eq!(for_c_string("what?"), "what\\?");
+    }
+
+    #[test]
+    fn string_nonchars_replaced() {
+        assert_eq!(for_c_string("\u{FDD0}"), " ");
+        assert_eq!(for_c_string("\u{FFFE}"), " ");
+    }
+
+    #[test]
+    fn string_supplementary_plane_passes_through() {
+        // C source is assumed UTF-8 — no surrogate pairs needed
+        assert_eq!(for_c_string("\u{1F600}"), "\u{1F600}");
+        assert_eq!(for_c_string("\u{10000}"), "\u{10000}");
+    }
+
+    #[test]
+    fn string_writer_matches() {
+        let input = "test\x00\"\\\ncaf\u{00e9}\u{1F600}??=";
+        let mut w = String::new();
+        write_c_string(&mut w, input).unwrap();
+        assert_eq!(for_c_string(input), w);
+    }
+
+    // -- for_c_char --
+
+    #[test]
+    fn char_passthrough() {
+        assert_eq!(for_c_char("hello world"), "hello world");
+        assert_eq!(for_c_char("caf\u{00e9}"), "caf\u{00e9}");
+    }
+
+    #[test]
+    fn char_escapes_single_quote_not_double() {
+        assert_eq!(for_c_char("a'b"), r"a\'b");
+        assert_eq!(for_c_char(r#"a"b"#), r#"a"b"#);
+    }
+
+    #[test]
+    fn char_all_named_escapes() {
+        assert_eq!(for_c_char("\x07"), "\\a");
+        assert_eq!(for_c_char("\x08"), "\\b");
+        assert_eq!(for_c_char("\t"), "\\t");
+        assert_eq!(for_c_char("\n"), "\\n");
+        assert_eq!(for_c_char("\x0B"), "\\v");
+        assert_eq!(for_c_char("\x0C"), "\\f");
+        assert_eq!(for_c_char("\r"), "\\r");
+    }
+
+    #[test]
+    fn char_octal_for_controls() {
+        assert_eq!(for_c_char("\x01"), "\\001");
+        assert_eq!(for_c_char("\x7F"), "\\177");
+    }
+
+    #[test]
+    fn char_trigraph_avoidance() {
+        assert_eq!(for_c_char("??="), "\\?\\?=");
+    }
+
+    #[test]
+    fn char_nonchars_replaced() {
+        assert_eq!(for_c_char("\u{FDD0}"), " ");
+    }
+
+    #[test]
+    fn char_writer_matches() {
+        let input = "test\x00'\\\ncaf\u{00e9}??/";
+        let mut w = String::new();
+        write_c_char(&mut w, input).unwrap();
+        assert_eq!(for_c_char(input), w);
+    }
+
+    // -- C vs other languages: key differences --
+
+    #[test]
+    fn c_uses_octal_not_hex_for_controls() {
+        // C uses octal because \x is greedy; Go/Rust/Python use hex
+        assert_eq!(for_c_string("\x01"), "\\001");
+        assert_eq!(for_go_string("\x01"), "\\x01");
+        assert_eq!(for_rust_string("\x01"), "\\x01");
+        assert_eq!(for_python_string("\x01"), "\\x01");
+    }
+
+    #[test]
+    fn c_escapes_question_mark() {
+        // C is the only language that needs trigraph avoidance
+        assert_eq!(for_c_string("??="), "\\?\\?=");
+        assert_eq!(for_go_string("??="), "??=");
+        assert_eq!(for_rust_string("??="), "??=");
+        assert_eq!(for_python_string("??="), "??=");
+    }
+
+    #[test]
+    fn c_vs_go_same_named_escapes() {
+        // C and Go share the same named escapes (\a, \b, \t, \n, \v, \f, \r)
+        assert_eq!(for_c_string("\x07"), for_go_string("\x07")); // \a
+        assert_eq!(for_c_string("\x0B"), for_go_string("\x0B")); // \v
+    }
+
+    #[test]
+    fn c_supplementary_plane_vs_java() {
+        // C passes through (UTF-8); Java uses surrogate pairs
+        assert_eq!(for_c_string("\u{1F600}"), "\u{1F600}");
+        assert_eq!(for_java("\u{1F600}"), "\\ud83d\\ude00");
+    }
+
+    #[test]
+    fn c_xss_payload() {
+        // C encoder does not encode < / > — they are not special
+        // in C string literals
+        assert_eq!(
+            for_c_string("<script>alert(\"xss\")</script>"),
+            "<script>alert(\\\"xss\\\")</script>"
+        );
+    }
+}
+
+// ===========================================================================
 // cross-context tests
 // ===========================================================================
 

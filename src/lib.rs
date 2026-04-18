@@ -93,6 +93,8 @@
 //!
 //! | function | safe for |
 //! |----------|----------|
+//! | [`for_c_string`] | C string literals (`"..."`) |
+//! | [`for_c_char`] | C character constants (`'...'`) |
 //! | [`for_java`] | Java string / char literals |
 //! | [`for_go_string`] | Go interpreted string literals (`"..."`) |
 //! | [`for_go_char`] | Go rune literals (`'...'`) |
@@ -150,6 +152,7 @@
 //! assert_eq!(buf, "safe &amp; sound");
 //! ```
 
+pub mod c;
 pub mod css;
 pub mod go;
 pub mod html;
@@ -164,6 +167,7 @@ pub mod xml;
 mod engine;
 
 // convenience re-exports — users can `use contextual_encoder::for_html` directly
+pub use c::{for_c_char, for_c_string, write_c_char, write_c_string};
 pub use css::{for_css_string, for_css_url, write_css_string, write_css_url};
 pub use go::{
     for_go_byte_string, for_go_char, for_go_string, write_go_byte_string, write_go_char,
@@ -231,6 +235,8 @@ mod tests {
         assert_eq!(for_python_raw_string(""), "");
         assert_eq!(for_sql(""), "");
         assert_eq!(for_sql_backslash(""), "");
+        assert_eq!(for_c_string(""), "");
+        assert_eq!(for_c_char(""), "");
     }
 
     #[test]
@@ -361,5 +367,19 @@ mod tests {
         assert_eq!(for_xml("café"), "café");
         assert_eq!(for_xml("世界"), "世界");
         assert_eq!(for_xml("😀"), "😀");
+    }
+
+    #[test]
+    fn multibyte_utf8_c_string_passthrough() {
+        assert_eq!(for_c_string("caf\u{00e9}"), "caf\u{00e9}");
+        assert_eq!(for_c_string("\u{4e16}\u{754c}"), "\u{4e16}\u{754c}");
+        assert_eq!(for_c_string("\u{1F600}"), "\u{1F600}");
+    }
+
+    #[test]
+    fn multibyte_utf8_c_char_passthrough() {
+        assert_eq!(for_c_char("caf\u{00e9}"), "caf\u{00e9}");
+        assert_eq!(for_c_char("\u{4e16}\u{754c}"), "\u{4e16}\u{754c}");
+        assert_eq!(for_c_char("\u{1F600}"), "\u{1F600}");
     }
 }
