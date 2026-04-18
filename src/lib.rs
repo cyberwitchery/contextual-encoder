@@ -93,6 +93,7 @@
 //!
 //! | function | safe for |
 //! |----------|----------|
+//! | [`for_json`] | JSON string values |
 //! | [`for_java`] | Java string / char literals |
 //! | [`for_go_string`] | Go interpreted string literals (`"..."`) |
 //! | [`for_go_char`] | Go rune literals (`'...'`) |
@@ -155,6 +156,7 @@ pub mod go;
 pub mod html;
 pub mod java;
 pub mod javascript;
+pub mod json;
 pub mod python;
 pub mod rust;
 pub mod sql;
@@ -178,6 +180,7 @@ pub use javascript::{
     for_javascript, for_javascript_attribute, for_javascript_block, for_javascript_source,
     write_javascript, write_javascript_attribute, write_javascript_block, write_javascript_source,
 };
+pub use json::{for_json, write_json};
 pub use python::{
     for_python_bytes, for_python_raw_string, for_python_string, write_python_bytes,
     write_python_raw_string, write_python_string,
@@ -220,6 +223,7 @@ mod tests {
         assert_eq!(for_xml11_content(""), "");
         assert_eq!(for_xml11_attribute(""), "");
         assert_eq!(for_java(""), "");
+        assert_eq!(for_json(""), "");
         assert_eq!(for_go_string(""), "");
         assert_eq!(for_go_char(""), "");
         assert_eq!(for_go_byte_string(""), "");
@@ -333,6 +337,13 @@ mod tests {
         assert_eq!(for_python_raw_string("café"), "café");
         assert_eq!(for_python_raw_string("世界"), "世界");
         assert_eq!(for_python_raw_string("😀"), "😀");
+    }
+
+    #[test]
+    fn multibyte_utf8_json() {
+        assert_eq!(for_json("café"), "café");
+        assert_eq!(for_json("世界"), "世界");
+        assert_eq!(for_json("😀"), "😀");
     }
 
     #[test]

@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+- JSON string encoder: `for_json` — distinct from JavaScript encoders (no `\'`, uses `\u00HH` instead of `\xHH`, mandatory U+2028/U+2029 encoding)
+- writer-based variant for JSON encoder
 - SQL string literal encoders: `for_sql` (standard double-quote escaping), `for_sql_backslash` (MySQL/MariaDB backslash escaping)
 - writer-based variants for all SQL encoders
 - Python literal encoders: `for_python_string`, `for_python_bytes`, `for_python_raw_string`
