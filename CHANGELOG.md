@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+- PHP literal encoders: `for_php_string` (double-quoted), `for_php_single_string` (single-quoted)
+- writer-based variants for all PHP encoders
 - Python literal encoders: `for_python_string`, `for_python_bytes`, `for_python_raw_string`
 - writer-based variants for all Python encoders
 - Go literal encoders: `for_go_string`, `for_go_char`, `for_go_byte_string`

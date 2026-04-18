@@ -98,6 +98,8 @@
 //! | [`for_rust_string`] | Rust string literals (`"..."`) |
 //! | [`for_rust_char`] | Rust char literals (`'...'`) |
 //! | [`for_rust_byte_string`] | Rust byte string literals (`b"..."`) |
+//! | [`for_php_string`] | PHP double-quoted string literals (`"..."`) |
+//! | [`for_php_single_string`] | PHP single-quoted string literals (`'...'`) |
 //! | [`for_python_string`] | Python string literals (`"..."` or `'...'`) |
 //! | [`for_python_bytes`] | Python bytes literals (`b"..."` or `b'...'`) |
 //! | [`for_python_raw_string`] | Python raw string literals (`r"..."` or `r'...'`) |
@@ -151,6 +153,7 @@ pub mod go;
 pub mod html;
 pub mod java;
 pub mod javascript;
+pub mod php;
 pub mod python;
 pub mod rust;
 pub mod uri;
@@ -173,6 +176,7 @@ pub use javascript::{
     for_javascript, for_javascript_attribute, for_javascript_block, for_javascript_source,
     write_javascript, write_javascript_attribute, write_javascript_block, write_javascript_source,
 };
+pub use php::{for_php_single_string, for_php_string, write_php_single_string, write_php_string};
 pub use python::{
     for_python_bytes, for_python_raw_string, for_python_string, write_python_bytes,
     write_python_raw_string, write_python_string,
@@ -220,6 +224,8 @@ mod tests {
         assert_eq!(for_rust_string(""), "");
         assert_eq!(for_rust_char(""), "");
         assert_eq!(for_rust_byte_string(""), "");
+        assert_eq!(for_php_string(""), "");
+        assert_eq!(for_php_single_string(""), "");
         assert_eq!(for_python_string(""), "");
         assert_eq!(for_python_bytes(""), "");
         assert_eq!(for_python_raw_string(""), "");
@@ -304,6 +310,20 @@ mod tests {
         assert_eq!(for_rust_string("café"), "café");
         assert_eq!(for_rust_string("世界"), "世界");
         assert_eq!(for_rust_string("😀"), "😀");
+    }
+
+    #[test]
+    fn multibyte_utf8_php_string_passthrough() {
+        assert_eq!(for_php_string("café"), "café");
+        assert_eq!(for_php_string("世界"), "世界");
+        assert_eq!(for_php_string("😀"), "😀");
+    }
+
+    #[test]
+    fn multibyte_utf8_php_single_string_passthrough() {
+        assert_eq!(for_php_single_string("café"), "café");
+        assert_eq!(for_php_single_string("世界"), "世界");
+        assert_eq!(for_php_single_string("😀"), "😀");
     }
 
     #[test]
