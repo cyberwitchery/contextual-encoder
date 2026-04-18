@@ -1513,6 +1513,126 @@ mod python_literals {
 }
 
 // ===========================================================================
+// JSON context tests
+// ===========================================================================
+
+mod json {
+    use super::*;
+
+    #[test]
+    fn passthrough() {
+        assert_eq!(for_json("hello world"), "hello world");
+        assert_eq!(for_json(""), "");
+        assert_eq!(for_json("café 日本語 😀"), "café 日本語 😀");
+    }
+
+    #[test]
+    fn double_quotes_escaped() {
+        assert_eq!(for_json(r#"say "hi""#), r#"say \"hi\""#);
+    }
+
+    #[test]
+    fn single_quotes_not_escaped() {
+        // JSON has no \' escape — single quotes are literal characters
+        assert_eq!(for_json("it's"), "it's");
+        assert_eq!(for_json("'quoted'"), "'quoted'");
+    }
+
+    #[test]
+    fn backslash() {
+        assert_eq!(for_json(r"back\slash"), r"back\\slash");
+    }
+
+    #[test]
+    fn named_escapes() {
+        assert_eq!(for_json("\x08"), "\\b");
+        assert_eq!(for_json("\t"), "\\t");
+        assert_eq!(for_json("\n"), "\\n");
+        assert_eq!(for_json("\x0C"), "\\f");
+        assert_eq!(for_json("\r"), "\\r");
+    }
+
+    #[test]
+    fn c0_controls_use_unicode_not_hex() {
+        // JSON mandates \uHHHH for control escapes — \xHH is invalid JSON
+        assert_eq!(for_json("\x00"), "\\u0000");
+        assert_eq!(for_json("\x01"), "\\u0001");
+        assert_eq!(for_json("\x07"), "\\u0007");
+        assert_eq!(for_json("\x0B"), "\\u000b");
+        assert_eq!(for_json("\x0E"), "\\u000e");
+        assert_eq!(for_json("\x1F"), "\\u001f");
+    }
+
+    #[test]
+    fn line_separators_mandatory() {
+        // U+2028/U+2029 are valid JSON per RFC 8259 but must be escaped
+        // for safe embedding in HTML <script> blocks
+        assert_eq!(for_json("\u{2028}"), "\\u2028");
+        assert_eq!(for_json("\u{2029}"), "\\u2029");
+        assert_eq!(for_json("a\u{2028}b\u{2029}c"), "a\\u2028b\\u2029c");
+    }
+
+    #[test]
+    fn slash_not_escaped() {
+        // RFC 8259 allows \/ but does not require it
+        assert_eq!(for_json("a/b"), "a/b");
+        assert_eq!(for_json("</script>"), "</script>");
+    }
+
+    #[test]
+    fn ampersand_not_escaped() {
+        assert_eq!(for_json("a&b"), "a&b");
+    }
+
+    #[test]
+    fn supplementary_plane_passes_through() {
+        // JSON is UTF-8 — no surrogate pairs needed
+        assert_eq!(for_json("😀"), "😀");
+        assert_eq!(for_json("\u{10000}"), "\u{10000}");
+    }
+
+    // -- difference from for_javascript_source --
+
+    #[test]
+    fn json_vs_js_source_single_quotes() {
+        // the key semantic difference: JS escapes ', JSON does not
+        assert_eq!(for_json("it's"), "it's");
+        assert_eq!(for_javascript_source("it's"), r"it\'s");
+    }
+
+    #[test]
+    fn json_vs_js_source_control_format() {
+        // JS uses \xHH; JSON uses \u00HH
+        assert_eq!(for_json("\x01"), "\\u0001");
+        assert_eq!(for_javascript_source("\x01"), "\\x01");
+    }
+
+    #[test]
+    fn json_vs_js_source_common_escapes() {
+        // both agree on named escapes and line separators
+        assert_eq!(for_json("\n"), for_javascript_source("\n"));
+        assert_eq!(for_json("\t"), for_javascript_source("\t"));
+        assert_eq!(for_json("\\"), for_javascript_source("\\"));
+        assert_eq!(for_json("\u{2028}"), for_javascript_source("\u{2028}"));
+    }
+
+    #[test]
+    fn already_escaped_input() {
+        // encoding should double-escape
+        assert_eq!(for_json(r"\n"), r"\\n");
+        assert_eq!(for_json(r#"\""#), r#"\\\""#);
+    }
+
+    #[test]
+    fn writer_matches_string() {
+        let input = "test\x00\"\\\n\u{2028}'café";
+        let mut w = String::new();
+        write_json(&mut w, input).unwrap();
+        assert_eq!(for_json(input), w);
+    }
+}
+
+// ===========================================================================
 // cross-context tests
 // ===========================================================================
 
