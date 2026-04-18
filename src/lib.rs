@@ -101,6 +101,8 @@
 //! | [`for_python_string`] | Python string literals (`"..."` or `'...'`) |
 //! | [`for_python_bytes`] | Python bytes literals (`b"..."` or `b'...'`) |
 //! | [`for_python_raw_string`] | Python raw string literals (`r"..."` or `r'...'`) |
+//! | [`for_sql`] | Standard SQL string literals (`'...'`) |
+//! | [`for_sql_backslash`] | MySQL/MariaDB string literals with backslash escaping (`'...'`) |
 //!
 //! # security model
 //!
@@ -153,6 +155,7 @@ pub mod java;
 pub mod javascript;
 pub mod python;
 pub mod rust;
+pub mod sql;
 pub mod uri;
 pub mod xml;
 
@@ -181,6 +184,7 @@ pub use rust::{
     for_rust_byte_string, for_rust_char, for_rust_string, write_rust_byte_string, write_rust_char,
     write_rust_string,
 };
+pub use sql::{for_sql, for_sql_backslash, write_sql, write_sql_backslash};
 pub use uri::{for_uri_component, write_uri_component};
 pub use xml::{
     for_cdata, for_xml, for_xml11, for_xml11_attribute, for_xml11_content, for_xml_attribute,
@@ -223,6 +227,8 @@ mod tests {
         assert_eq!(for_python_string(""), "");
         assert_eq!(for_python_bytes(""), "");
         assert_eq!(for_python_raw_string(""), "");
+        assert_eq!(for_sql(""), "");
+        assert_eq!(for_sql_backslash(""), "");
     }
 
     #[test]
@@ -332,6 +338,20 @@ mod tests {
         assert_eq!(for_java("café"), "café");
         assert_eq!(for_java("世界"), "世界");
         assert_eq!(for_java("😀"), "\\ud83d\\ude00");
+    }
+
+    #[test]
+    fn multibyte_utf8_sql() {
+        assert_eq!(for_sql("café"), "café");
+        assert_eq!(for_sql("世界"), "世界");
+        assert_eq!(for_sql("😀"), "😀");
+    }
+
+    #[test]
+    fn multibyte_utf8_sql_backslash() {
+        assert_eq!(for_sql_backslash("café"), "café");
+        assert_eq!(for_sql_backslash("世界"), "世界");
+        assert_eq!(for_sql_backslash("😀"), "😀");
     }
 
     #[test]
