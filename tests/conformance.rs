@@ -1633,6 +1633,281 @@ mod json {
 }
 
 // ===========================================================================
+// SQL context tests
+// ===========================================================================
+
+mod sql {
+    use super::*;
+
+    // -- for_sql: standard SQL string literals --
+
+    #[test]
+    fn sql_single_quote_doubled() {
+        assert_eq!(for_sql("it's"), "it''s");
+        assert_eq!(for_sql("'quoted'"), "''quoted''");
+        assert_eq!(for_sql("a''b"), "a''''b");
+        assert_eq!(for_sql("'''"), "''''''");
+    }
+
+    #[test]
+    fn sql_injection_classic() {
+        assert_eq!(
+            for_sql("'; DROP TABLE users; --"),
+            "''; DROP TABLE users; --"
+        );
+    }
+
+    #[test]
+    fn sql_injection_stacked() {
+        assert_eq!(for_sql("' OR '1'='1"), "'' OR ''1''=''1");
+    }
+
+    #[test]
+    fn sql_nul_removed() {
+        assert_eq!(for_sql("before\x00after"), "beforeafter");
+        assert_eq!(for_sql("\x00"), "");
+        assert_eq!(for_sql("\x00\x00\x00"), "");
+        assert_eq!(for_sql("a\x00b\x00c"), "abc");
+    }
+
+    #[test]
+    fn sql_backslash_passes_through() {
+        // standard SQL does NOT treat backslash specially
+        assert_eq!(for_sql(r"\"), r"\");
+        assert_eq!(for_sql(r"\\"), r"\\");
+        assert_eq!(for_sql(r"\'"), r"\''");
+    }
+
+    #[test]
+    fn sql_double_quote_passes_through() {
+        assert_eq!(for_sql(r#"a"b"#), r#"a"b"#);
+        assert_eq!(for_sql(r#""""#), r#""""#);
+    }
+
+    #[test]
+    fn sql_control_chars_pass_through() {
+        // standard SQL has no escape sequences for control characters
+        assert_eq!(for_sql("\t"), "\t");
+        assert_eq!(for_sql("\n"), "\n");
+        assert_eq!(for_sql("\r"), "\r");
+        assert_eq!(for_sql("\x08"), "\x08");
+        assert_eq!(for_sql("\x1A"), "\x1A");
+        assert_eq!(for_sql("\x01"), "\x01");
+        assert_eq!(for_sql("\x7F"), "\x7F");
+    }
+
+    #[test]
+    fn sql_nonchars_replaced() {
+        assert_eq!(for_sql("\u{FDD0}"), " ");
+        assert_eq!(for_sql("\u{FDEF}"), " ");
+        assert_eq!(for_sql("\u{FFFE}"), " ");
+        assert_eq!(for_sql("\u{FFFF}"), " ");
+        assert_eq!(for_sql("\u{1FFFE}"), " ");
+        assert_eq!(for_sql("\u{10FFFF}"), " ");
+    }
+
+    // -- unicode --
+
+    #[test]
+    fn sql_unicode_passthrough() {
+        assert_eq!(for_sql("café"), "café");
+        assert_eq!(for_sql("日本語"), "日本語");
+        assert_eq!(for_sql("😀"), "😀");
+        assert_eq!(for_sql("\u{10000}"), "\u{10000}");
+    }
+
+    #[test]
+    fn sql_mixed_unicode_and_quotes() {
+        assert_eq!(for_sql("café's best"), "café''s best");
+        assert_eq!(for_sql("日本語'テスト"), "日本語''テスト");
+    }
+
+    // -- boundary conditions --
+
+    #[test]
+    fn sql_empty_string() {
+        assert_eq!(for_sql(""), "");
+    }
+
+    #[test]
+    fn sql_single_safe_char() {
+        assert_eq!(for_sql("a"), "a");
+    }
+
+    #[test]
+    fn sql_single_quote_only() {
+        assert_eq!(for_sql("'"), "''");
+    }
+
+    #[test]
+    fn sql_long_safe_string() {
+        let s = "a".repeat(10000);
+        assert_eq!(for_sql(&s), s);
+    }
+
+    #[test]
+    fn sql_writer_matches_string() {
+        let input = "test\x00'escape'' café\u{FDD0}";
+        let mut w = String::new();
+        write_sql(&mut w, input).unwrap();
+        assert_eq!(for_sql(input), w);
+    }
+
+    // -- for_sql_backslash: MySQL/MariaDB --
+
+    #[test]
+    fn backslash_single_quote_escaped() {
+        assert_eq!(for_sql_backslash("it's"), r"it\'s");
+        assert_eq!(for_sql_backslash("'quoted'"), r"\'quoted\'");
+        assert_eq!(for_sql_backslash("'''"), r"\'\'\'");
+    }
+
+    #[test]
+    fn backslash_escapes_backslash() {
+        assert_eq!(for_sql_backslash(r"\"), r"\\");
+        assert_eq!(for_sql_backslash(r"\\"), r"\\\\");
+        assert_eq!(for_sql_backslash(r"a\b"), r"a\\b");
+    }
+
+    #[test]
+    fn backslash_all_named_escapes() {
+        assert_eq!(for_sql_backslash("\x00"), r"\0");
+        assert_eq!(for_sql_backslash("\x08"), r"\b");
+        assert_eq!(for_sql_backslash("\t"), r"\t");
+        assert_eq!(for_sql_backslash("\n"), r"\n");
+        assert_eq!(for_sql_backslash("\r"), r"\r");
+        assert_eq!(for_sql_backslash("\x1A"), r"\Z");
+    }
+
+    #[test]
+    fn backslash_injection_classic() {
+        assert_eq!(
+            for_sql_backslash("'; DROP TABLE users; --"),
+            r"\'; DROP TABLE users; --"
+        );
+    }
+
+    #[test]
+    fn backslash_injection_via_backslash() {
+        // attacker tries \' to escape the closing quote — both get escaped
+        assert_eq!(for_sql_backslash("\\'"), r"\\\'");
+    }
+
+    #[test]
+    fn backslash_injection_stacked() {
+        assert_eq!(for_sql_backslash("' OR '1'='1"), r"\' OR \'1\'=\'1");
+    }
+
+    #[test]
+    fn backslash_nul_encoded_not_removed() {
+        // unlike standard SQL, MySQL encodes NUL as \0 rather than removing
+        assert_eq!(for_sql_backslash("a\x00b"), r"a\0b");
+        assert_eq!(for_sql_backslash("\x00"), r"\0");
+    }
+
+    #[test]
+    fn backslash_double_quote_passes_through() {
+        assert_eq!(for_sql_backslash(r#"a"b"#), r#"a"b"#);
+    }
+
+    #[test]
+    fn backslash_other_controls_pass_through() {
+        // controls not in MySQL's escape list pass through unchanged
+        assert_eq!(for_sql_backslash("\x01"), "\x01");
+        assert_eq!(for_sql_backslash("\x07"), "\x07");
+        assert_eq!(for_sql_backslash("\x0B"), "\x0B");
+        assert_eq!(for_sql_backslash("\x0C"), "\x0C");
+        assert_eq!(for_sql_backslash("\x1F"), "\x1F");
+        assert_eq!(for_sql_backslash("\x7F"), "\x7F");
+    }
+
+    #[test]
+    fn backslash_nonchars_replaced() {
+        assert_eq!(for_sql_backslash("\u{FDD0}"), " ");
+        assert_eq!(for_sql_backslash("\u{FDEF}"), " ");
+        assert_eq!(for_sql_backslash("\u{FFFE}"), " ");
+        assert_eq!(for_sql_backslash("\u{FFFF}"), " ");
+        assert_eq!(for_sql_backslash("\u{1FFFE}"), " ");
+        assert_eq!(for_sql_backslash("\u{10FFFF}"), " ");
+    }
+
+    #[test]
+    fn backslash_unicode_passthrough() {
+        assert_eq!(for_sql_backslash("café"), "café");
+        assert_eq!(for_sql_backslash("日本語"), "日本語");
+        assert_eq!(for_sql_backslash("😀"), "😀");
+    }
+
+    #[test]
+    fn backslash_empty_string() {
+        assert_eq!(for_sql_backslash(""), "");
+    }
+
+    #[test]
+    fn backslash_long_safe_string() {
+        let s = "a".repeat(10000);
+        assert_eq!(for_sql_backslash(&s), s);
+    }
+
+    #[test]
+    fn backslash_writer_matches_string() {
+        let input = "test\x00\x08\t\n\r\x1A'\\café\u{FDD0}";
+        let mut w = String::new();
+        write_sql_backslash(&mut w, input).unwrap();
+        assert_eq!(for_sql_backslash(input), w);
+    }
+
+    // -- standard vs backslash dialect comparison --
+
+    #[test]
+    fn dialect_quote_escaping_differs() {
+        // standard doubles; backslash escapes
+        assert_eq!(for_sql("'"), "''");
+        assert_eq!(for_sql_backslash("'"), r"\'");
+    }
+
+    #[test]
+    fn dialect_backslash_handling_differs() {
+        // standard passes through; backslash escapes
+        assert_eq!(for_sql(r"\"), r"\");
+        assert_eq!(for_sql_backslash(r"\"), r"\\");
+    }
+
+    #[test]
+    fn dialect_nul_handling_differs() {
+        // standard removes; backslash encodes
+        assert_eq!(for_sql("\x00"), "");
+        assert_eq!(for_sql_backslash("\x00"), r"\0");
+    }
+
+    #[test]
+    fn dialect_control_handling_differs() {
+        // standard passes controls through; backslash encodes specific ones
+        assert_eq!(for_sql("\t"), "\t");
+        assert_eq!(for_sql_backslash("\t"), r"\t");
+        assert_eq!(for_sql("\n"), "\n");
+        assert_eq!(for_sql_backslash("\n"), r"\n");
+        assert_eq!(for_sql("\r"), "\r");
+        assert_eq!(for_sql_backslash("\r"), r"\r");
+    }
+
+    #[test]
+    fn dialect_nonchars_same() {
+        // both replace non-characters with space
+        assert_eq!(for_sql("\u{FDD0}"), " ");
+        assert_eq!(for_sql_backslash("\u{FDD0}"), " ");
+    }
+
+    #[test]
+    fn dialect_safe_input_same() {
+        // both pass safe input through unchanged
+        let safe = "SELECT name FROM users WHERE id = 42";
+        assert_eq!(for_sql(safe), safe);
+        assert_eq!(for_sql_backslash(safe), safe);
+    }
+}
+
+// ===========================================================================
 // cross-context tests
 // ===========================================================================
 
@@ -1647,6 +1922,8 @@ mod cross_context {
         let js = for_javascript(input);
         let css = for_css_string(input);
         let uri = for_uri_component(input);
+        let sql = for_sql(input);
+        let sql_bs = for_sql_backslash(input);
 
         // each produces different output appropriate for its context
         assert_ne!(html, js);
@@ -1661,6 +1938,10 @@ mod cross_context {
         assert!(css.contains("\\3c"));
         // uri uses percent encoding
         assert!(uri.contains("%3C"));
+        // sql doubles single quotes
+        assert!(sql.contains("''"));
+        // sql_backslash uses backslash escapes for quotes
+        assert!(sql_bs.contains("\\'"));
     }
 
     #[test]
@@ -1682,6 +1963,14 @@ mod cross_context {
         let mut uri_w = String::new();
         write_uri_component(&mut uri_w, input).unwrap();
         assert_eq!(for_uri_component(input), uri_w);
+
+        let mut sql_w = String::new();
+        write_sql(&mut sql_w, input).unwrap();
+        assert_eq!(for_sql(input), sql_w);
+
+        let mut sql_bs_w = String::new();
+        write_sql_backslash(&mut sql_bs_w, input).unwrap();
+        assert_eq!(for_sql_backslash(input), sql_bs_w);
     }
 
     #[test]
@@ -1693,6 +1982,9 @@ mod cross_context {
         assert_eq!(for_javascript(safe), safe);
         // safe in CSS (no special chars)
         assert_eq!(for_css_string(safe), safe);
+        // safe in SQL (no quotes, NUL, or non-characters)
+        assert_eq!(for_sql(safe), safe);
+        assert_eq!(for_sql_backslash(safe), safe);
         // NOT safe in URI (space is encoded)
         assert_ne!(for_uri_component(safe), safe);
     }
