@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 //! contextual output encoding for XSS defense and safe literal embedding.
 //!
 //! this crate provides context-aware encoding functions inspired by the
