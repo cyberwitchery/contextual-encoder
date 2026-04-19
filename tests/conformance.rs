@@ -1908,6 +1908,202 @@ mod sql {
 }
 
 // ===========================================================================
+// Shell context tests
+// ===========================================================================
+
+mod shell {
+    use super::*;
+
+    // -- basic behavior --
+
+    #[test]
+    fn safe_passthrough() {
+        assert_eq!(for_shell_single_quoted("hello world"), "hello world");
+        assert_eq!(for_shell_single_quoted(""), "");
+        assert_eq!(for_shell_single_quoted("café 日本語 😀"), "café 日本語 😀");
+    }
+
+    #[test]
+    fn single_quote_end_backslash_reopen() {
+        // the canonical POSIX technique: 'end'\''reopen'
+        assert_eq!(for_shell_single_quoted("it's"), "it'\\''s");
+        assert_eq!(for_shell_single_quoted("'"), "'\\''");
+        assert_eq!(for_shell_single_quoted("''"), "'\\'''\\''");
+        assert_eq!(for_shell_single_quoted("'''"), "'\\'''\\'''\\''");
+    }
+
+    // -- shell metacharacters are inert inside single quotes --
+
+    #[test]
+    fn dollar_expansion_inert() {
+        assert_eq!(for_shell_single_quoted("$HOME"), "$HOME");
+        assert_eq!(for_shell_single_quoted("${PATH}"), "${PATH}");
+        assert_eq!(for_shell_single_quoted("$(whoami)"), "$(whoami)");
+    }
+
+    #[test]
+    fn backtick_command_substitution_inert() {
+        assert_eq!(for_shell_single_quoted("`whoami`"), "`whoami`");
+    }
+
+    #[test]
+    fn backslash_inert() {
+        assert_eq!(for_shell_single_quoted(r"\n"), r"\n");
+        assert_eq!(for_shell_single_quoted(r"\\"), r"\\");
+        assert_eq!(for_shell_single_quoted(r"\"), r"\");
+    }
+
+    #[test]
+    fn double_quote_inert() {
+        assert_eq!(for_shell_single_quoted(r#""hello""#), r#""hello""#);
+    }
+
+    #[test]
+    fn operators_inert() {
+        assert_eq!(for_shell_single_quoted("a;b"), "a;b");
+        assert_eq!(for_shell_single_quoted("a|b"), "a|b");
+        assert_eq!(for_shell_single_quoted("a&&b"), "a&&b");
+        assert_eq!(for_shell_single_quoted("a||b"), "a||b");
+        assert_eq!(for_shell_single_quoted("a>b"), "a>b");
+        assert_eq!(for_shell_single_quoted("a<b"), "a<b");
+        assert_eq!(for_shell_single_quoted("a>>b"), "a>>b");
+    }
+
+    #[test]
+    fn glob_chars_inert() {
+        assert_eq!(for_shell_single_quoted("*.txt"), "*.txt");
+        assert_eq!(for_shell_single_quoted("file?"), "file?");
+        assert_eq!(for_shell_single_quoted("[abc]"), "[abc]");
+    }
+
+    #[test]
+    fn hash_inert() {
+        assert_eq!(for_shell_single_quoted("# comment"), "# comment");
+    }
+
+    #[test]
+    fn tilde_inert() {
+        assert_eq!(for_shell_single_quoted("~/dir"), "~/dir");
+    }
+
+    // -- NUL removed --
+
+    #[test]
+    fn nul_removed() {
+        assert_eq!(for_shell_single_quoted("before\x00after"), "beforeafter");
+        assert_eq!(for_shell_single_quoted("\x00"), "");
+        assert_eq!(for_shell_single_quoted("\x00\x00\x00"), "");
+    }
+
+    // -- control characters pass through --
+
+    #[test]
+    fn control_chars_pass_through() {
+        assert_eq!(for_shell_single_quoted("\t"), "\t");
+        assert_eq!(for_shell_single_quoted("\n"), "\n");
+        assert_eq!(for_shell_single_quoted("\r"), "\r");
+        assert_eq!(for_shell_single_quoted("\x01"), "\x01");
+        assert_eq!(for_shell_single_quoted("\x7F"), "\x7F");
+    }
+
+    // -- unicode --
+
+    #[test]
+    fn supplementary_plane_passes_through() {
+        assert_eq!(for_shell_single_quoted("\u{10000}"), "\u{10000}");
+        assert_eq!(for_shell_single_quoted("😀"), "😀");
+    }
+
+    #[test]
+    fn nonchars_replaced() {
+        assert_eq!(for_shell_single_quoted("\u{FDD0}"), " ");
+        assert_eq!(for_shell_single_quoted("\u{FDEF}"), " ");
+        assert_eq!(for_shell_single_quoted("\u{FFFE}"), " ");
+        assert_eq!(for_shell_single_quoted("\u{FFFF}"), " ");
+        assert_eq!(for_shell_single_quoted("\u{1FFFE}"), " ");
+        assert_eq!(for_shell_single_quoted("\u{10FFFF}"), " ");
+    }
+
+    #[test]
+    fn mixed_unicode_and_quotes() {
+        assert_eq!(for_shell_single_quoted("café's"), "café'\\''s");
+        assert_eq!(
+            for_shell_single_quoted("日本語'テスト"),
+            "日本語'\\''テスト"
+        );
+    }
+
+    // -- injection attempts --
+
+    #[test]
+    fn injection_command_termination() {
+        assert_eq!(
+            for_shell_single_quoted("'; rm -rf /; echo '"),
+            "'\\''; rm -rf /; echo '\\''",
+        );
+    }
+
+    #[test]
+    fn injection_nested_quotes() {
+        assert_eq!(
+            for_shell_single_quoted("'$(whoami)'"),
+            "'\\''$(whoami)'\\''"
+        );
+    }
+
+    // -- boundary conditions --
+
+    #[test]
+    fn empty_string() {
+        assert_eq!(for_shell_single_quoted(""), "");
+    }
+
+    #[test]
+    fn single_safe_char() {
+        assert_eq!(for_shell_single_quoted("a"), "a");
+    }
+
+    #[test]
+    fn long_safe_string() {
+        let s = "a".repeat(10000);
+        assert_eq!(for_shell_single_quoted(&s), s);
+    }
+
+    // -- writer matches string --
+
+    #[test]
+    fn writer_matches_string() {
+        let input = "test\x00'escape' café\u{FDD0}$HOME`cmd`\\path";
+        let mut w = String::new();
+        write_shell_single_quoted(&mut w, input).unwrap();
+        assert_eq!(for_shell_single_quoted(input), w);
+    }
+
+    // -- comparison with SQL --
+
+    #[test]
+    fn shell_vs_sql_quote_escaping() {
+        // SQL doubles the quote; shell uses end-backslash-reopen
+        assert_eq!(for_sql("it's"), "it''s");
+        assert_eq!(for_shell_single_quoted("it's"), "it'\\''s");
+    }
+
+    #[test]
+    fn shell_vs_sql_backslash_handling() {
+        // both pass backslash through (standard SQL and shell single-quoted)
+        assert_eq!(for_sql(r"\"), r"\");
+        assert_eq!(for_shell_single_quoted(r"\"), r"\");
+    }
+
+    #[test]
+    fn shell_vs_sql_nul_handling() {
+        // both remove NUL bytes
+        assert_eq!(for_sql("\x00"), "");
+        assert_eq!(for_shell_single_quoted("\x00"), "");
+    }
+}
+
+// ===========================================================================
 // cross-context tests
 // ===========================================================================
 
@@ -1924,6 +2120,7 @@ mod cross_context {
         let uri = for_uri_component(input);
         let sql = for_sql(input);
         let sql_bs = for_sql_backslash(input);
+        let shell = for_shell_single_quoted(input);
 
         // each produces different output appropriate for its context
         assert_ne!(html, js);
@@ -1942,6 +2139,8 @@ mod cross_context {
         assert!(sql.contains("''"));
         // sql_backslash uses backslash escapes for quotes
         assert!(sql_bs.contains("\\'"));
+        // shell uses end-quote / backslash-quote / reopen-quote
+        assert!(shell.contains("'\\''"));
     }
 
     #[test]
@@ -1971,6 +2170,10 @@ mod cross_context {
         let mut sql_bs_w = String::new();
         write_sql_backslash(&mut sql_bs_w, input).unwrap();
         assert_eq!(for_sql_backslash(input), sql_bs_w);
+
+        let mut shell_w = String::new();
+        write_shell_single_quoted(&mut shell_w, input).unwrap();
+        assert_eq!(for_shell_single_quoted(input), shell_w);
     }
 
     #[test]
@@ -1985,6 +2188,8 @@ mod cross_context {
         // safe in SQL (no quotes, NUL, or non-characters)
         assert_eq!(for_sql(safe), safe);
         assert_eq!(for_sql_backslash(safe), safe);
+        // safe in shell (no quotes, NUL, or non-characters)
+        assert_eq!(for_shell_single_quoted(safe), safe);
         // NOT safe in URI (space is encoded)
         assert_ne!(for_uri_component(safe), safe);
     }

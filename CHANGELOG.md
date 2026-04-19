@@ -2,6 +2,8 @@
 
 ## [unreleased]
 
+- POSIX shell single-quoted string encoder: `for_shell_single_quoted`
+- writer-based variant for shell encoder
 - JSON string encoder: `for_json` — distinct from JavaScript encoders (no `\'`, uses `\u00HH` instead of `\xHH`, mandatory U+2028/U+2029 encoding)
 - writer-based variant for JSON encoder
 - SQL string literal encoders: `for_sql` (standard double-quote escaping), `for_sql_backslash` (MySQL/MariaDB backslash escaping)

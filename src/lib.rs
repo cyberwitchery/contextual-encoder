@@ -106,6 +106,7 @@
 //! | [`for_python_raw_string`] | Python raw string literals (`r"..."` or `r'...'`) |
 //! | [`for_sql`] | Standard SQL string literals (`'...'`) |
 //! | [`for_sql_backslash`] | MySQL/MariaDB string literals with backslash escaping (`'...'`) |
+//! | [`for_shell_single_quoted`] | POSIX shell single-quoted string literals (`'...'`) |
 //!
 //! # security model
 //!
@@ -159,6 +160,7 @@ pub mod javascript;
 pub mod json;
 pub mod python;
 pub mod rust;
+pub mod shell;
 pub mod sql;
 pub mod uri;
 pub mod xml;
@@ -189,6 +191,7 @@ pub use rust::{
     for_rust_byte_string, for_rust_char, for_rust_string, write_rust_byte_string, write_rust_char,
     write_rust_string,
 };
+pub use shell::{for_shell_single_quoted, write_shell_single_quoted};
 pub use sql::{for_sql, for_sql_backslash, write_sql, write_sql_backslash};
 pub use uri::{for_uri_component, write_uri_component};
 pub use xml::{
@@ -235,6 +238,7 @@ mod tests {
         assert_eq!(for_python_raw_string(""), "");
         assert_eq!(for_sql(""), "");
         assert_eq!(for_sql_backslash(""), "");
+        assert_eq!(for_shell_single_quoted(""), "");
     }
 
     #[test]
@@ -365,6 +369,13 @@ mod tests {
         assert_eq!(for_sql_backslash("café"), "café");
         assert_eq!(for_sql_backslash("世界"), "世界");
         assert_eq!(for_sql_backslash("😀"), "😀");
+    }
+
+    #[test]
+    fn multibyte_utf8_shell_single_quoted() {
+        assert_eq!(for_shell_single_quoted("café"), "café");
+        assert_eq!(for_shell_single_quoted("世界"), "世界");
+        assert_eq!(for_shell_single_quoted("😀"), "😀");
     }
 
     #[test]
