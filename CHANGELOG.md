@@ -10,6 +10,8 @@
 - writer-based variants for all Python encoders
 - Go literal encoders: `for_go_string`, `for_go_char`, `for_go_byte_string`
 - writer-based variants for all Go encoders
+- YAML string encoders: `for_yaml` (double-quoted with YAML-specific `\N`, `\_`, `\L`, `\P` escapes), `for_yaml_single_quoted` (single-quoted with quote-doubling)
+- writer-based variants for all YAML encoders
 
 ## [0.2.0]
 

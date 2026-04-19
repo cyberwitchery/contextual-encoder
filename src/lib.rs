@@ -106,6 +106,8 @@
 //! | [`for_python_raw_string`] | Python raw string literals (`r"..."` or `r'...'`) |
 //! | [`for_sql`] | Standard SQL string literals (`'...'`) |
 //! | [`for_sql_backslash`] | MySQL/MariaDB string literals with backslash escaping (`'...'`) |
+//! | [`for_yaml`] | YAML double-quoted string scalars (`"..."`) |
+//! | [`for_yaml_single_quoted`] | YAML single-quoted string scalars (`'...'`) |
 //!
 //! # security model
 //!
@@ -162,6 +164,7 @@ pub mod rust;
 pub mod sql;
 pub mod uri;
 pub mod xml;
+pub mod yaml;
 
 mod engine;
 
@@ -196,6 +199,7 @@ pub use xml::{
     for_xml_comment, for_xml_content, write_cdata, write_xml, write_xml11, write_xml11_attribute,
     write_xml11_content, write_xml_attribute, write_xml_comment, write_xml_content,
 };
+pub use yaml::{for_yaml, for_yaml_single_quoted, write_yaml, write_yaml_single_quoted};
 
 #[cfg(test)]
 mod tests {
@@ -235,6 +239,8 @@ mod tests {
         assert_eq!(for_python_raw_string(""), "");
         assert_eq!(for_sql(""), "");
         assert_eq!(for_sql_backslash(""), "");
+        assert_eq!(for_yaml(""), "");
+        assert_eq!(for_yaml_single_quoted(""), "");
     }
 
     #[test]
@@ -358,6 +364,20 @@ mod tests {
         assert_eq!(for_sql("café"), "café");
         assert_eq!(for_sql("世界"), "世界");
         assert_eq!(for_sql("😀"), "😀");
+    }
+
+    #[test]
+    fn multibyte_utf8_yaml() {
+        assert_eq!(for_yaml("café"), "café");
+        assert_eq!(for_yaml("世界"), "世界");
+        assert_eq!(for_yaml("😀"), "😀");
+    }
+
+    #[test]
+    fn multibyte_utf8_yaml_single_quoted() {
+        assert_eq!(for_yaml_single_quoted("café"), "café");
+        assert_eq!(for_yaml_single_quoted("世界"), "世界");
+        assert_eq!(for_yaml_single_quoted("😀"), "😀");
     }
 
     #[test]

@@ -1633,6 +1633,412 @@ mod json {
 }
 
 // ===========================================================================
+// YAML context tests
+// ===========================================================================
+
+mod yaml {
+    use super::*;
+
+    // -- for_yaml (double-quoted) --
+
+    #[test]
+    fn passthrough() {
+        assert_eq!(for_yaml("hello world"), "hello world");
+        assert_eq!(for_yaml(""), "");
+        assert_eq!(for_yaml("café 日本語 😀"), "café 日本語 😀");
+    }
+
+    #[test]
+    fn double_quotes_escaped() {
+        assert_eq!(for_yaml(r#"say "hi""#), r#"say \"hi\""#);
+        assert_eq!(for_yaml(r#""""#), r#"\"\""#);
+    }
+
+    #[test]
+    fn single_quotes_not_escaped() {
+        assert_eq!(for_yaml("it's"), "it's");
+        assert_eq!(for_yaml("'quoted'"), "'quoted'");
+    }
+
+    #[test]
+    fn backslash() {
+        assert_eq!(for_yaml(r"back\slash"), r"back\\slash");
+        assert_eq!(for_yaml(r"\\"), r"\\\\");
+        // already-escaped input gets double-escaped
+        assert_eq!(for_yaml(r#"\""#), r#"\\\""#);
+    }
+
+    #[test]
+    fn all_named_escapes() {
+        assert_eq!(for_yaml("\x00"), "\\0");
+        assert_eq!(for_yaml("\x07"), "\\a");
+        assert_eq!(for_yaml("\x08"), "\\b");
+        assert_eq!(for_yaml("\t"), "\\t");
+        assert_eq!(for_yaml("\n"), "\\n");
+        assert_eq!(for_yaml("\x0B"), "\\v");
+        assert_eq!(for_yaml("\x0C"), "\\f");
+        assert_eq!(for_yaml("\r"), "\\r");
+        assert_eq!(for_yaml("\x1B"), "\\e");
+    }
+
+    #[test]
+    fn yaml_specific_escapes() {
+        // these are unique to YAML's escape vocabulary
+        assert_eq!(for_yaml("\u{0085}"), "\\N"); // NEL → \N
+        assert_eq!(for_yaml("\u{00A0}"), "\\_"); // NBSP → \_
+        assert_eq!(for_yaml("\u{2028}"), "\\L"); // LS → \L
+        assert_eq!(for_yaml("\u{2029}"), "\\P"); // PS → \P
+    }
+
+    #[test]
+    fn hex_for_unnamed_c0_controls() {
+        assert_eq!(for_yaml("\x01"), "\\x01");
+        assert_eq!(for_yaml("\x02"), "\\x02");
+        assert_eq!(for_yaml("\x03"), "\\x03");
+        assert_eq!(for_yaml("\x04"), "\\x04");
+        assert_eq!(for_yaml("\x05"), "\\x05");
+        assert_eq!(for_yaml("\x06"), "\\x06");
+        assert_eq!(for_yaml("\x0E"), "\\x0e");
+        assert_eq!(for_yaml("\x0F"), "\\x0f");
+        assert_eq!(for_yaml("\x10"), "\\x10");
+        assert_eq!(for_yaml("\x1A"), "\\x1a");
+        assert_eq!(for_yaml("\x1C"), "\\x1c");
+        assert_eq!(for_yaml("\x1D"), "\\x1d");
+        assert_eq!(for_yaml("\x1E"), "\\x1e");
+        assert_eq!(for_yaml("\x1F"), "\\x1f");
+    }
+
+    #[test]
+    fn del_hex() {
+        assert_eq!(for_yaml("\x7F"), "\\x7f");
+    }
+
+    #[test]
+    fn c1_controls_hex() {
+        // C1 controls except NEL (0x85) use hex escapes
+        assert_eq!(for_yaml("\u{0080}"), "\\x80");
+        assert_eq!(for_yaml("\u{0081}"), "\\x81");
+        assert_eq!(for_yaml("\u{0084}"), "\\x84");
+        // NEL is the exception — it gets \N
+        assert_eq!(for_yaml("\u{0085}"), "\\N");
+        assert_eq!(for_yaml("\u{0086}"), "\\x86");
+        assert_eq!(for_yaml("\u{009E}"), "\\x9e");
+        assert_eq!(for_yaml("\u{009F}"), "\\x9f");
+    }
+
+    #[test]
+    fn all_c0_controls() {
+        // exhaustive check that every C0 control is encoded
+        for cp in 0x00u8..=0x1F {
+            let s = String::from(char::from(cp));
+            let encoded = for_yaml(&s);
+            assert_ne!(encoded, s, "C0 control 0x{:02x} was not encoded", cp);
+        }
+    }
+
+    #[test]
+    fn noncharacters_replaced() {
+        assert_eq!(for_yaml("\u{FDD0}"), " ");
+        assert_eq!(for_yaml("\u{FDEF}"), " ");
+        assert_eq!(for_yaml("\u{FFFE}"), " ");
+        assert_eq!(for_yaml("\u{FFFF}"), " ");
+        assert_eq!(for_yaml("\u{1FFFE}"), " ");
+        assert_eq!(for_yaml("\u{10FFFF}"), " ");
+    }
+
+    #[test]
+    fn supplementary_plane() {
+        // YAML is UTF-8 — supplementary plane characters pass through
+        assert_eq!(for_yaml("😀"), "😀");
+        assert_eq!(for_yaml("\u{10000}"), "\u{10000}");
+    }
+
+    // -- injection scenarios (double-quoted) --
+
+    #[test]
+    fn injection_multiline_breakout() {
+        // attacker tries to inject a new YAML key by embedding a newline
+        assert_eq!(
+            for_yaml("value\nmalicious_key: pwned"),
+            "value\\nmalicious_key: pwned"
+        );
+    }
+
+    #[test]
+    fn injection_quote_breakout() {
+        // attacker tries to close the double-quoted string
+        assert_eq!(
+            for_yaml(r#"value" injected: true"#),
+            r#"value\" injected: true"#
+        );
+    }
+
+    #[test]
+    fn injection_backslash_then_quote() {
+        // attacker tries \" to escape the escape and close the string
+        // both \ and " get escaped, so the attack fails
+        assert_eq!(for_yaml("\\\""), "\\\\\\\"");
+    }
+
+    #[test]
+    fn injection_yaml_directive() {
+        // %YAML directive character — safe inside quotes
+        assert_eq!(for_yaml("%YAML 1.2"), "%YAML 1.2");
+    }
+
+    #[test]
+    fn injection_document_markers() {
+        // --- and ... are document markers but safe inside quotes
+        assert_eq!(for_yaml("---"), "---");
+        assert_eq!(for_yaml("..."), "...");
+    }
+
+    #[test]
+    fn injection_anchor_alias() {
+        // anchors and aliases are safe inside quoted strings
+        assert_eq!(for_yaml("*alias"), "*alias");
+        assert_eq!(for_yaml("&anchor"), "&anchor");
+    }
+
+    #[test]
+    fn injection_flow_indicators() {
+        assert_eq!(for_yaml("[a, b]"), "[a, b]");
+        assert_eq!(for_yaml("{key: val}"), "{key: val}");
+    }
+
+    #[test]
+    fn injection_comment() {
+        assert_eq!(for_yaml("value # not a comment"), "value # not a comment");
+    }
+
+    #[test]
+    fn injection_tag() {
+        assert_eq!(for_yaml("!!str value"), "!!str value");
+    }
+
+    #[test]
+    fn injection_block_scalar_indicators() {
+        // | and > are block scalar indicators — safe inside quotes
+        assert_eq!(for_yaml("|"), "|");
+        assert_eq!(for_yaml(">"), ">");
+    }
+
+    #[test]
+    fn injection_nel_line_break() {
+        // NEL could cause a line break in some contexts — we encode it
+        assert_eq!(for_yaml("before\u{0085}after"), "before\\Nafter");
+    }
+
+    #[test]
+    fn injection_invisible_nbsp() {
+        // NBSP is visually indistinguishable from space — we encode it
+        assert_eq!(for_yaml("safe\u{00A0}value"), "safe\\_value");
+    }
+
+    // -- boundary conditions --
+
+    #[test]
+    fn empty_string() {
+        assert_eq!(for_yaml(""), "");
+    }
+
+    #[test]
+    fn single_safe_char() {
+        assert_eq!(for_yaml("a"), "a");
+    }
+
+    #[test]
+    fn single_unsafe_char() {
+        assert_eq!(for_yaml("\""), "\\\"");
+    }
+
+    #[test]
+    fn long_safe_string() {
+        let s = "a".repeat(10000);
+        assert_eq!(for_yaml(&s), s);
+    }
+
+    #[test]
+    fn all_unsafe_string() {
+        assert_eq!(for_yaml("\"\\\n\r\t"), "\\\"\\\\\\n\\r\\t");
+    }
+
+    // -- for_yaml_single_quoted --
+
+    #[test]
+    fn single_passthrough() {
+        assert_eq!(for_yaml_single_quoted("hello world"), "hello world");
+        assert_eq!(for_yaml_single_quoted(""), "");
+        assert_eq!(for_yaml_single_quoted("café 日本語 😀"), "café 日本語 😀");
+    }
+
+    #[test]
+    fn single_doubles_quotes() {
+        assert_eq!(for_yaml_single_quoted("it's"), "it''s");
+        assert_eq!(for_yaml_single_quoted("'quoted'"), "''quoted''");
+        assert_eq!(for_yaml_single_quoted("'''"), "''''''");
+    }
+
+    #[test]
+    fn single_double_quote_unchanged() {
+        assert_eq!(for_yaml_single_quoted(r#"a"b"#), r#"a"b"#);
+    }
+
+    #[test]
+    fn single_backslash_unchanged() {
+        // single-quoted YAML has no backslash escaping
+        assert_eq!(for_yaml_single_quoted(r"back\slash"), r"back\slash");
+        assert_eq!(for_yaml_single_quoted(r"\\"), r"\\");
+    }
+
+    #[test]
+    fn single_nul_removed() {
+        assert_eq!(for_yaml_single_quoted("before\x00after"), "beforeafter");
+        assert_eq!(for_yaml_single_quoted("\x00"), "");
+    }
+
+    #[test]
+    fn single_tab_lf_cr_preserved() {
+        // these are the only control chars allowed in YAML single-quoted scalars
+        assert_eq!(for_yaml_single_quoted("a\tb"), "a\tb");
+        assert_eq!(for_yaml_single_quoted("a\nb"), "a\nb");
+        assert_eq!(for_yaml_single_quoted("a\rb"), "a\rb");
+    }
+
+    #[test]
+    fn single_c0_controls_replaced() {
+        for cp in 0x01u8..=0x08 {
+            let s = String::from(char::from(cp));
+            assert_eq!(for_yaml_single_quoted(&s), " ", "C0 control 0x{:02x}", cp);
+        }
+        assert_eq!(for_yaml_single_quoted("\x0B"), " ");
+        assert_eq!(for_yaml_single_quoted("\x0C"), " ");
+        for cp in 0x0Eu8..=0x1F {
+            let s = String::from(char::from(cp));
+            assert_eq!(for_yaml_single_quoted(&s), " ", "C0 control 0x{:02x}", cp);
+        }
+    }
+
+    #[test]
+    fn single_del_replaced() {
+        assert_eq!(for_yaml_single_quoted("\x7F"), " ");
+    }
+
+    #[test]
+    fn single_c1_controls_replaced() {
+        for cp in 0x80u32..=0x9F {
+            let c = char::from_u32(cp).unwrap();
+            let s = String::from(c);
+            assert_eq!(for_yaml_single_quoted(&s), " ", "C1 control U+{:04X}", cp);
+        }
+    }
+
+    #[test]
+    fn single_nonchars_replaced() {
+        assert_eq!(for_yaml_single_quoted("\u{FDD0}"), " ");
+        assert_eq!(for_yaml_single_quoted("\u{FFFE}"), " ");
+        assert_eq!(for_yaml_single_quoted("\u{10FFFF}"), " ");
+    }
+
+    #[test]
+    fn single_injection_quote_breakout() {
+        assert_eq!(
+            for_yaml_single_quoted("value' injected: true"),
+            "value'' injected: true"
+        );
+    }
+
+    #[test]
+    fn single_injection_double_quote_attempt() {
+        // double quotes pass through — they have no special meaning
+        // in single-quoted context
+        assert_eq!(
+            for_yaml_single_quoted(r#"value" injected: true"#),
+            r#"value" injected: true"#
+        );
+    }
+
+    // -- double-quoted vs single-quoted comparison --
+
+    #[test]
+    fn yaml_vs_single_backslash_handling() {
+        assert_eq!(for_yaml(r"\"), r"\\");
+        assert_eq!(for_yaml_single_quoted(r"\"), r"\");
+    }
+
+    #[test]
+    fn yaml_vs_single_control_handling() {
+        // double-quoted preserves control chars via escapes
+        assert_eq!(for_yaml("\x01"), "\\x01");
+        // single-quoted replaces them (no escape mechanism)
+        assert_eq!(for_yaml_single_quoted("\x01"), " ");
+    }
+
+    #[test]
+    fn yaml_vs_single_quote_handling() {
+        // double-quoted escapes " but not '
+        assert_eq!(for_yaml(r#""x""#), r#"\"x\""#);
+        assert_eq!(for_yaml("'x'"), "'x'");
+        // single-quoted doubles ' but passes "
+        assert_eq!(for_yaml_single_quoted("'x'"), "''x''");
+        assert_eq!(for_yaml_single_quoted(r#""x""#), r#""x""#);
+    }
+
+    // -- YAML vs JSON comparison --
+
+    #[test]
+    fn yaml_vs_json_nel() {
+        // YAML has a dedicated \N escape for NEL; JSON does not encode NEL
+        assert_eq!(for_yaml("\u{0085}"), "\\N");
+        // JSON: NEL is not in the encoded set (it's > 0x1F and not 2028/2029)
+        assert_eq!(for_json("\u{0085}"), "\u{0085}");
+    }
+
+    #[test]
+    fn yaml_vs_json_nbsp() {
+        // YAML has a dedicated \_ escape for NBSP
+        assert_eq!(for_yaml("\u{00A0}"), "\\_");
+        // JSON passes NBSP through
+        assert_eq!(for_json("\u{00A0}"), "\u{00A0}");
+    }
+
+    #[test]
+    fn yaml_vs_json_line_separators() {
+        // both encode line/paragraph separators, but differently
+        assert_eq!(for_yaml("\u{2028}"), "\\L");
+        assert_eq!(for_json("\u{2028}"), "\\u2028");
+        assert_eq!(for_yaml("\u{2029}"), "\\P");
+        assert_eq!(for_json("\u{2029}"), "\\u2029");
+    }
+
+    #[test]
+    fn yaml_vs_json_control_format() {
+        // both use hex-style escapes for unnamed controls, same format
+        assert_eq!(for_yaml("\x01"), "\\x01");
+        // JSON uses \u00HH (4-digit)
+        assert_eq!(for_json("\x01"), "\\u0001");
+    }
+
+    // -- writer consistency --
+
+    #[test]
+    fn writer_matches_string() {
+        let input = "test\x00\"\\\n\u{0085}\u{00A0}\u{2028}\u{2029}café😀\u{FDD0}";
+        let mut w = String::new();
+        write_yaml(&mut w, input).unwrap();
+        assert_eq!(for_yaml(input), w);
+    }
+
+    #[test]
+    fn single_writer_matches_string() {
+        let input = "test\x00'\x01\x7Fcafé\u{FDD0}";
+        let mut w = String::new();
+        write_yaml_single_quoted(&mut w, input).unwrap();
+        assert_eq!(for_yaml_single_quoted(input), w);
+    }
+}
+
+// ===========================================================================
 // cross-context tests
 // ===========================================================================
 
