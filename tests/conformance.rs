@@ -1573,10 +1573,21 @@ mod json {
     }
 
     #[test]
-    fn slash_not_escaped() {
-        // RFC 8259 allows \/ but does not require it
-        assert_eq!(for_json("a/b"), "a/b");
-        assert_eq!(for_json("</script>"), "</script>");
+    fn forward_slash_escaped() {
+        // RFC 8259 §7 permits \/ — we use it to prevent </script> breakout
+        assert_eq!(for_json("/"), "\\/");
+        assert_eq!(for_json("a/b"), "a\\/b");
+        assert_eq!(for_json("</script>"), "<\\/script>");
+        assert_eq!(for_json("https://example.com"), "https:\\/\\/example.com");
+    }
+
+    #[test]
+    fn script_tag_breakout_prevented() {
+        // JSON embedded in <script> blocks must not allow </script> injection
+        assert_eq!(
+            for_json("</script><script>alert(1)//"),
+            "<\\/script><script>alert(1)\\/\\/"
+        );
     }
 
     #[test]
@@ -1614,6 +1625,13 @@ mod json {
         assert_eq!(for_json("\t"), for_javascript_source("\t"));
         assert_eq!(for_json("\\"), for_javascript_source("\\"));
         assert_eq!(for_json("\u{2028}"), for_javascript_source("\u{2028}"));
+    }
+
+    #[test]
+    fn json_vs_js_source_slash() {
+        // JSON escapes / (for <script> safety); JS source does not (standalone files)
+        assert_eq!(for_json("/"), "\\/");
+        assert_eq!(for_javascript_source("/"), "/");
     }
 
     #[test]

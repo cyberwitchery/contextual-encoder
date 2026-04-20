@@ -20,6 +20,9 @@
 //!
 //! - named escapes: `\b`, `\t`, `\n`, `\f`, `\r`, `\"`, `\\`
 //! - other C0 controls (U+0000–U+001F) → `\u00HH`
+//! - `/` → `\/` (forward slash; prevents `</script>` breakout when JSON
+//!   is embedded in HTML `<script>` blocks. RFC 8259 §7 explicitly permits
+//!   `\/` as a valid escape sequence)
 //! - U+2028 → `\u2028`, U+2029 → `\u2029` (line/paragraph separators;
 //!   mandatory because JSON is often embedded in `<script>` blocks where
 //!   these would terminate the JavaScript string literal)
@@ -47,10 +50,11 @@ use crate::engine::encode_loop;
 /// | `\r` (U+000D) | `\r` |
 /// | `"` | `\"` |
 /// | `\` | `\\` |
+/// | `/` | `\/` |
 /// | other C0 controls (U+0000–U+001F) | `\u00HH` |
 /// | U+2028 (line separator) | `\u2028` |
 /// | U+2029 (paragraph separator) | `\u2029` |
-/// | single quotes, `/`, `&` | unchanged |
+/// | single quotes, `&` | unchanged |
 ///
 /// # difference from JavaScript encoders
 ///
@@ -81,7 +85,10 @@ pub fn write_json<W: fmt::Write>(out: &mut W, input: &str) -> fmt::Result {
 }
 
 fn needs_json_encoding(c: char) -> bool {
-    matches!(c, '\x00'..='\x1F' | '"' | '\\' | '\u{2028}' | '\u{2029}')
+    matches!(
+        c,
+        '\x00'..='\x1F' | '"' | '\\' | '/' | '\u{2028}' | '\u{2029}'
+    )
 }
 
 fn write_json_encoded<W: fmt::Write>(out: &mut W, c: char, _next: Option<char>) -> fmt::Result {
@@ -93,6 +100,7 @@ fn write_json_encoded<W: fmt::Write>(out: &mut W, c: char, _next: Option<char>) 
         '\r' => out.write_str("\\r"),
         '"' => out.write_str("\\\""),
         '\\' => out.write_str("\\\\"),
+        '/' => out.write_str("\\/"),
         '\u{2028}' => out.write_str("\\u2028"),
         '\u{2029}' => out.write_str("\\u2029"),
         // other C0 controls → \u00HH (JSON does not support \xHH)
@@ -159,9 +167,26 @@ mod tests {
     }
 
     #[test]
-    fn slash_and_ampersand_not_escaped() {
-        assert_eq!(for_json("a/b"), "a/b");
+    fn forward_slash_escaped() {
+        assert_eq!(for_json("/"), "\\/");
+        assert_eq!(for_json("a/b"), "a\\/b");
+        assert_eq!(for_json("https://example.com"), "https:\\/\\/example.com");
+    }
+
+    #[test]
+    fn ampersand_not_escaped() {
         assert_eq!(for_json("a&b"), "a&b");
+    }
+
+    #[test]
+    fn script_tag_breakout_prevented() {
+        // the primary reason for escaping /: prevent </script> breakout
+        // when JSON is embedded in an HTML <script> block
+        assert_eq!(for_json("</script>"), "<\\/script>");
+        assert_eq!(
+            for_json("</script><script>alert(1)//"),
+            "<\\/script><script>alert(1)\\/\\/"
+        );
     }
 
     #[test]
