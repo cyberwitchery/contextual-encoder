@@ -2,6 +2,7 @@
 
 ## [unreleased]
 
+- **breaking:** `for_json` now escapes forward slash (`/`) as `\/` to prevent `</script>` breakout when JSON is embedded in HTML `<script>` blocks (RFC 8259 §7 permits `\/`)
 - JSON string encoder: `for_json` — distinct from JavaScript encoders (no `\'`, uses `\u00HH` instead of `\xHH`, mandatory U+2028/U+2029 encoding)
 - writer-based variant for JSON encoder
 - SQL string literal encoders: `for_sql` (standard double-quote escaping), `for_sql_backslash` (MySQL/MariaDB backslash escaping)
