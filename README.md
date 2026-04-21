@@ -85,6 +85,12 @@ output context so that only the necessary characters are encoded.
 these encoders are not part of the OWASP Java Encoder's scope. they encode
 untrusted strings for safe embedding in source code literals.
 
+#### CSV
+
+| function | safe for | notes |
+|----------|----------|-------|
+| `for_csv_field` | CSV field values | RFC 4180 — wraps in `"..."` when needed, `"` → `""` |
+
 #### Java
 
 | function | safe for | notes |

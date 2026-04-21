@@ -104,6 +104,7 @@
 //! | [`for_python_string`] | Python string literals (`"..."` or `'...'`) |
 //! | [`for_python_bytes`] | Python bytes literals (`b"..."` or `b'...'`) |
 //! | [`for_python_raw_string`] | Python raw string literals (`r"..."` or `r'...'`) |
+//! | [`for_csv_field`] | CSV fields ([RFC 4180](https://www.rfc-editor.org/rfc/rfc4180)) |
 //! | [`for_sql`] | Standard SQL string literals (`'...'`) |
 //! | [`for_sql_backslash`] | MySQL/MariaDB string literals with backslash escaping (`'...'`) |
 //!
@@ -152,6 +153,7 @@
 //! ```
 
 pub mod css;
+pub mod csv;
 pub mod go;
 pub mod html;
 pub mod java;
@@ -167,6 +169,7 @@ mod engine;
 
 // convenience re-exports — users can `use contextual_encoder::for_html` directly
 pub use css::{for_css_string, for_css_url, write_css_string, write_css_url};
+pub use csv::{for_csv_field, write_csv_field};
 pub use go::{
     for_go_byte_string, for_go_char, for_go_string, write_go_byte_string, write_go_char,
     write_go_string,
@@ -235,6 +238,7 @@ mod tests {
         assert_eq!(for_python_raw_string(""), "");
         assert_eq!(for_sql(""), "");
         assert_eq!(for_sql_backslash(""), "");
+        assert_eq!(for_csv_field(""), "");
     }
 
     #[test]
@@ -253,6 +257,10 @@ mod tests {
 
         buf.clear();
         write_uri_component(&mut buf, "").unwrap();
+        assert_eq!(buf, "");
+
+        buf.clear();
+        write_csv_field(&mut buf, "").unwrap();
         assert_eq!(buf, "");
     }
 
@@ -351,6 +359,13 @@ mod tests {
         assert_eq!(for_java("café"), "café");
         assert_eq!(for_java("世界"), "世界");
         assert_eq!(for_java("😀"), "\\ud83d\\ude00");
+    }
+
+    #[test]
+    fn multibyte_utf8_csv_field() {
+        assert_eq!(for_csv_field("café"), "café");
+        assert_eq!(for_csv_field("世界"), "世界");
+        assert_eq!(for_csv_field("😀"), "😀");
     }
 
     #[test]
