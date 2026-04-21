@@ -46,6 +46,29 @@ pub(crate) fn write_utf8_hex_bytes<W: fmt::Write>(out: &mut W, c: char) -> fmt::
     Ok(())
 }
 
+/// attempts to write a C0 named escape for the given character.
+///
+/// covers the escapes shared by go and python: BEL (`\a`), BS (`\b`),
+/// TAB (`\t`), LF (`\n`), VT (`\v`), FF (`\f`), CR (`\r`), and
+/// backslash (`\\`).
+///
+/// returns `Some(Ok(()))` if an escape was written, `Some(Err(..))` on
+/// write error, or `None` if the character has no named escape.
+pub(crate) fn write_c0_named_escape<W: fmt::Write>(out: &mut W, c: char) -> Option<fmt::Result> {
+    let s = match c {
+        '\x07' => "\\a",
+        '\x08' => "\\b",
+        '\t' => "\\t",
+        '\n' => "\\n",
+        '\x0B' => "\\v",
+        '\x0C' => "\\f",
+        '\r' => "\\r",
+        '\\' => "\\\\",
+        _ => return None,
+    };
+    Some(out.write_str(s))
+}
+
 /// returns true if the character is invalid in XML 1.0 output and should be
 /// replaced (with space or dash depending on context).
 ///
