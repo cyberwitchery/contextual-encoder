@@ -40,7 +40,9 @@
 
 use std::fmt;
 
-use crate::engine::{encode_loop, is_unicode_noncharacter, write_utf8_hex_bytes};
+use crate::engine::{
+    encode_loop, is_unicode_noncharacter, write_c0_named_escape, write_utf8_hex_bytes,
+};
 
 // ---------------------------------------------------------------------------
 // for_python_string — safe for Python string literals ("..." or '...')
@@ -131,17 +133,12 @@ fn write_python_bytes_encoded<W: fmt::Write>(
     c: char,
     _next: Option<char>,
 ) -> fmt::Result {
+    if let Some(r) = write_c0_named_escape(out, c) {
+        return r;
+    }
     match c {
-        '\x07' => out.write_str("\\a"),
-        '\x08' => out.write_str("\\b"),
-        '\t' => out.write_str("\\t"),
-        '\n' => out.write_str("\\n"),
-        '\x0B' => out.write_str("\\v"),
-        '\x0C' => out.write_str("\\f"),
-        '\r' => out.write_str("\\r"),
         '"' => out.write_str("\\\""),
         '\'' => out.write_str("\\'"),
-        '\\' => out.write_str("\\\\"),
         // non-ASCII → encode each UTF-8 byte
         c if !c.is_ascii() => write_utf8_hex_bytes(out, c),
         // other C0 controls and DEL
@@ -155,15 +152,10 @@ fn write_python_bytes_encoded<W: fmt::Write>(
 
 /// writes the encoded form of a character for python string context.
 fn write_python_text_encoded<W: fmt::Write>(out: &mut W, c: char) -> fmt::Result {
+    if let Some(r) = write_c0_named_escape(out, c) {
+        return r;
+    }
     match c {
-        '\x07' => out.write_str("\\a"),
-        '\x08' => out.write_str("\\b"),
-        '\t' => out.write_str("\\t"),
-        '\n' => out.write_str("\\n"),
-        '\x0B' => out.write_str("\\v"),
-        '\x0C' => out.write_str("\\f"),
-        '\r' => out.write_str("\\r"),
-        '\\' => out.write_str("\\\\"),
         '"' => out.write_str("\\\""),
         '\'' => out.write_str("\\'"),
         c if is_unicode_noncharacter(c as u32) => out.write_char(' '),
