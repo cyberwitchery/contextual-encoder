@@ -870,12 +870,149 @@ mod java {
         );
     }
 
+    // -- comprehensive C0 control coverage --
+
+    #[test]
+    fn all_c0_controls() {
+        // named escapes
+        assert_eq!(for_java("\x08"), "\\b");
+        assert_eq!(for_java("\x09"), "\\t");
+        assert_eq!(for_java("\x0A"), "\\n");
+        assert_eq!(for_java("\x0C"), "\\f");
+        assert_eq!(for_java("\x0D"), "\\r");
+
+        // all remaining C0 controls use octal (at end of input → shortest)
+        let octal_controls: &[(u8, &str)] = &[
+            (0x00, "\\0"),
+            (0x01, "\\1"),
+            (0x02, "\\2"),
+            (0x03, "\\3"),
+            (0x04, "\\4"),
+            (0x05, "\\5"),
+            (0x06, "\\6"),
+            (0x07, "\\7"),
+            (0x0B, "\\13"),
+            (0x0E, "\\16"),
+            (0x0F, "\\17"),
+            (0x10, "\\20"),
+            (0x11, "\\21"),
+            (0x12, "\\22"),
+            (0x13, "\\23"),
+            (0x14, "\\24"),
+            (0x15, "\\25"),
+            (0x16, "\\26"),
+            (0x17, "\\27"),
+            (0x18, "\\30"),
+            (0x19, "\\31"),
+            (0x1A, "\\32"),
+            (0x1B, "\\33"),
+            (0x1C, "\\34"),
+            (0x1D, "\\35"),
+            (0x1E, "\\36"),
+            (0x1F, "\\37"),
+        ];
+        for &(byte, expected) in octal_controls {
+            let s = String::from(char::from(byte));
+            assert_eq!(for_java(&s), expected, "C0 control 0x{:02x}", byte);
+        }
+
+        // DEL
+        assert_eq!(for_java("\x7F"), "\\177");
+    }
+
+    // -- surrogate pair boundary values --
+
+    #[test]
+    fn surrogate_pair_boundaries() {
+        // U+10000: first supplementary → high=D800, low=DC00
+        assert_eq!(for_java("\u{10000}"), "\\ud800\\udc00");
+        // U+10001: second supplementary → high=D800, low=DC01
+        assert_eq!(for_java("\u{10001}"), "\\ud800\\udc01");
+        // U+103FF: last with high surrogate D800 → low=DFFF
+        assert_eq!(for_java("\u{103FF}"), "\\ud800\\udfff");
+        // U+10400: first with high surrogate D801
+        assert_eq!(for_java("\u{10400}"), "\\ud801\\udc00");
+        // U+1F600: emoji (well-known supplementary)
+        assert_eq!(for_java("\u{1F600}"), "\\ud83d\\ude00");
+        // U+20000: CJK Extension B → high=D840, low=DC00
+        assert_eq!(for_java("\u{20000}"), "\\ud840\\udc00");
+        // U+10FFFD: last valid non-noncharacter → high=DBFF, low=DFFD
+        assert_eq!(for_java("\u{10FFFD}"), "\\udbff\\udffd");
+    }
+
+    #[test]
+    fn surrogate_pairs_in_mixed_input() {
+        // supplementary char surrounded by ASCII
+        assert_eq!(for_java("a\u{1F600}b"), "a\\ud83d\\ude00b");
+        // consecutive supplementary chars
+        assert_eq!(
+            for_java("\u{1F600}\u{1F601}"),
+            "\\ud83d\\ude00\\ud83d\\ude01"
+        );
+        // supplementary char next to control char
+        assert_eq!(for_java("\n\u{1F600}"), "\\n\\ud83d\\ude00");
+    }
+
+    // -- octal disambiguation edge cases --
+
+    #[test]
+    fn octal_before_non_octal_digits() {
+        // digits 8 and 9 are NOT octal → shortest form
+        assert_eq!(for_java("\x008"), "\\08");
+        assert_eq!(for_java("\x009"), "\\09");
+        assert_eq!(for_java("\x018"), "\\18");
+        assert_eq!(for_java("\x019"), "\\19");
+    }
+
+    #[test]
+    fn octal_disambiguation_all_octal_followers() {
+        // every octal digit (0-7) triggers 3-digit form
+        for d in '0'..='7' {
+            let input = format!("\x00{d}");
+            let expected = format!("\\000{d}");
+            assert_eq!(for_java(&input), expected, "NUL before '{d}'");
+        }
+    }
+
+    #[test]
+    fn octal_disambiguation_multi_digit_values() {
+        // VT (0x0B = 0o13) before octal digit → 3-digit \013
+        assert_eq!(for_java("\x0B0"), "\\0130");
+        assert_eq!(for_java("\x0B7"), "\\0137");
+        // VT before non-octal digit → shortest \13
+        assert_eq!(for_java("\x0B8"), "\\138");
+        assert_eq!(for_java("\x0Ba"), "\\13a");
+
+        // US (0x1F = 0o37) before octal digit → 3-digit \037
+        assert_eq!(for_java("\x1F0"), "\\0370");
+        // US before non-octal → shortest \37
+        assert_eq!(for_java("\x1F9"), "\\379");
+
+        // DEL (0x7F = 0o177) — already 3 digits, no change needed
+        assert_eq!(for_java("\x7F0"), "\\1770");
+        assert_eq!(for_java("\x7Fa"), "\\177a");
+    }
+
+    // -- writer-matches-string parity --
+
     #[test]
     fn writer_matches_string() {
         let input = "test\x00\"\\\u{1F600}\u{2028}";
         let mut w = String::new();
         write_java(&mut w, input).unwrap();
         assert_eq!(for_java(input), w);
+    }
+
+    #[test]
+    fn writer_matches_string_all_categories() {
+        // input covering every encoding category:
+        // passthrough, named escapes, quotes, octal, line separators,
+        // surrogate pairs, non-characters, octal disambiguation
+        let input = "abc\x08\t\n\x0C\r\"\'\\\x00\x0B\x7F\u{2028}\u{2029}\u{1F600}\u{FDD0}\x000";
+        let string_result = for_java(input);
+        let mut writer_result = String::new();
+        write_java(&mut writer_result, input).unwrap();
+        assert_eq!(string_result, writer_result);
     }
 }
 
