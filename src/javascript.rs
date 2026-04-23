@@ -1,6 +1,6 @@
 //! javascript contextual output encoders.
 //!
-//! provides four encoding contexts:
+//! provides five encoding contexts:
 //!
 //! - [`for_javascript`] — universal encoder, safe in HTML attributes, script
 //!   blocks, and standalone .js files
@@ -8,16 +8,17 @@
 //!   (e.g., `onclick="..."`)
 //! - [`for_javascript_block`] — optimized for `<script>` blocks
 //! - [`for_javascript_source`] — optimized for standalone .js / JSON files
+//! - [`for_js_template`] — for ES6 template literal content (`` `...` ``)
 //!
 //! # security notes
 //!
-//! - none of these encoders encode the grave accent (`` ` ``). **never embed
-//!   untrusted data directly inside ES2015+ template literals.** instead,
-//!   encode the data into a regular javascript string variable, then reference
-//!   that variable from the template literal.
-//! - these encoders are for string literal contexts only. they cannot make
-//!   arbitrary javascript expressions, variable names, or property accessors
-//!   safe.
+//! - the string literal encoders ([`for_javascript`], [`for_javascript_attribute`],
+//!   [`for_javascript_block`], [`for_javascript_source`]) do **not** encode the
+//!   grave accent (`` ` ``). do not use them to embed data inside template
+//!   literals — use [`for_js_template`] instead.
+//! - these encoders are for string/template literal contexts only. they cannot
+//!   make arbitrary javascript expressions, variable names, or property
+//!   accessors safe.
 //! - `for_javascript_block` and `for_javascript_source` use backslash escapes
 //!   for quotes (`\"`, `\'`) which are **not safe in HTML attribute contexts**.
 //! - `for_javascript_attribute` does not escape `/` and is **not safe in
@@ -209,7 +210,90 @@ pub fn write_javascript_source<W: fmt::Write>(out: &mut W, input: &str) -> fmt::
 }
 
 // ---------------------------------------------------------------------------
-// shared implementation
+// for_js_template — ES6 template literal encoder
+// ---------------------------------------------------------------------------
+
+/// encodes `input` for safe embedding inside an ES6 template literal
+/// (`` `...` ``).
+///
+/// template literals use backticks as delimiters and `${...}` for
+/// interpolation. this encoder escapes both so untrusted data cannot break
+/// out of the literal or inject expressions.
+///
+/// # encoding rules
+///
+/// - `` ` `` → `` \` `` (prevents breaking out of the template literal)
+/// - `$` followed by `{` → `\${` (prevents expression interpolation)
+/// - `\` → `\\`
+/// - `/` → `\/` (prevents `</script>` injection)
+/// - C0 controls → named escapes (`\b`, `\t`, `\n`, `\f`, `\r`) or hex
+///   (`\xHH`)
+/// - U+2028 → `\u2028`, U+2029 → `\u2029` (line/paragraph separators)
+///
+/// unlike the string literal encoders, this does **not** escape `"` or `'`
+/// (they are ordinary characters inside template literals).
+///
+/// # examples
+///
+/// ```
+/// use contextual_encoder::for_js_template;
+///
+/// assert_eq!(for_js_template("hello `world`"), r"hello \`world\`");
+/// assert_eq!(for_js_template("${alert(1)}"), r"\${alert(1)}");
+/// assert_eq!(for_js_template("safe"), "safe");
+/// assert_eq!(for_js_template("a $ b"), "a $ b");
+/// ```
+pub fn for_js_template(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    write_js_template(&mut out, input).expect("writing to string cannot fail");
+    out
+}
+
+/// writes the template-literal-encoded form of `input` to `out`.
+///
+/// see [`for_js_template`] for encoding rules.
+pub fn write_js_template<W: fmt::Write>(out: &mut W, input: &str) -> fmt::Result {
+    encode_loop(
+        out,
+        input,
+        needs_js_template_encoding,
+        write_js_template_encoded,
+    )
+}
+
+fn needs_js_template_encoding(c: char) -> bool {
+    matches!(
+        c,
+        '\x00'..='\x1F' | '\\' | '`' | '$' | '/' | '\u{2028}' | '\u{2029}'
+    )
+}
+
+fn write_js_template_encoded<W: fmt::Write>(
+    out: &mut W,
+    c: char,
+    next: Option<char>,
+) -> fmt::Result {
+    match c {
+        '\x08' => out.write_str("\\b"),
+        '\t' => out.write_str("\\t"),
+        '\n' => out.write_str("\\n"),
+        '\x0B' => out.write_str("\\x0b"),
+        '\x0C' => out.write_str("\\f"),
+        '\r' => out.write_str("\\r"),
+        '`' => out.write_str("\\`"),
+        '$' if next == Some('{') => out.write_str("\\$"),
+        '$' => out.write_char('$'),
+        '/' => out.write_str("\\/"),
+        '\\' => out.write_str("\\\\"),
+        '\u{2028}' => out.write_str("\\u2028"),
+        '\u{2029}' => out.write_str("\\u2029"),
+        // other C0 controls
+        c => write!(out, "\\x{:02x}", c as u32),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// shared implementation (string literal encoders)
 // ---------------------------------------------------------------------------
 
 fn encode_js(input: &str, config: &JsConfig) -> String {
@@ -373,5 +457,91 @@ mod tests {
     #[test]
     fn js_source_encodes_line_separators() {
         assert_eq!(for_javascript_source("\u{2028}"), r"\u2028");
+    }
+
+    // -- for_js_template --
+
+    #[test]
+    fn js_template_no_encoding_needed() {
+        assert_eq!(for_js_template("hello world"), "hello world");
+        assert_eq!(for_js_template(""), "");
+    }
+
+    #[test]
+    fn js_template_encodes_backtick() {
+        assert_eq!(for_js_template("hello `world`"), r"hello \`world\`");
+        assert_eq!(for_js_template("`"), r"\`");
+    }
+
+    #[test]
+    fn js_template_encodes_interpolation() {
+        assert_eq!(for_js_template("${alert(1)}"), r"\${alert(1)}");
+        assert_eq!(for_js_template("a${b}c"), r"a\${b}c");
+        assert_eq!(for_js_template("${a}${b}"), r"\${a}\${b}");
+    }
+
+    #[test]
+    fn js_template_dollar_without_brace_passes_through() {
+        assert_eq!(for_js_template("a $ b"), "a $ b");
+        assert_eq!(for_js_template("$100"), "$100");
+        assert_eq!(for_js_template("a$"), "a$");
+    }
+
+    #[test]
+    fn js_template_encodes_backslash() {
+        assert_eq!(for_js_template(r"a\b"), r"a\\b");
+    }
+
+    #[test]
+    fn js_template_encodes_slash() {
+        assert_eq!(for_js_template("</script>"), r"<\/script>");
+    }
+
+    #[test]
+    fn js_template_does_not_encode_quotes() {
+        assert_eq!(for_js_template(r#"a"b"#), r#"a"b"#);
+        assert_eq!(for_js_template("a'b"), "a'b");
+    }
+
+    #[test]
+    fn js_template_encodes_control_chars() {
+        assert_eq!(for_js_template("\x00"), r"\x00");
+        assert_eq!(for_js_template("\x08"), r"\b");
+        assert_eq!(for_js_template("\t"), r"\t");
+        assert_eq!(for_js_template("\n"), r"\n");
+        assert_eq!(for_js_template("\x0B"), r"\x0b");
+        assert_eq!(for_js_template("\x0C"), r"\f");
+        assert_eq!(for_js_template("\r"), r"\r");
+        assert_eq!(for_js_template("\x1F"), r"\x1f");
+    }
+
+    #[test]
+    fn js_template_encodes_line_separators() {
+        assert_eq!(for_js_template("\u{2028}"), r"\u2028");
+        assert_eq!(for_js_template("\u{2029}"), r"\u2029");
+    }
+
+    #[test]
+    fn js_template_preserves_non_ascii() {
+        assert_eq!(for_js_template("café"), "café");
+        assert_eq!(for_js_template("日本語"), "日本語");
+        assert_eq!(for_js_template("😀"), "😀");
+    }
+
+    #[test]
+    fn js_template_mixed_input() {
+        assert_eq!(
+            for_js_template("`Hello ${name}`, welcome\\n"),
+            r"\`Hello \${name}\`, welcome\\n"
+        );
+    }
+
+    #[test]
+    fn js_template_writer_variant() {
+        let input = "`test` ${x} café";
+        let string_result = for_js_template(input);
+        let mut writer_result = String::new();
+        write_js_template(&mut writer_result, input).unwrap();
+        assert_eq!(string_result, writer_result);
     }
 }

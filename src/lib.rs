@@ -72,6 +72,7 @@
 //! | [`for_javascript_attribute`] | HTML event attributes |
 //! | [`for_javascript_block`] | `<script>` blocks |
 //! | [`for_javascript_source`] | standalone .js files |
+//! | [`for_js_template`] | ES6 template literal content (`` `...` ``) |
 //!
 //! ## CSS
 //!
@@ -126,8 +127,9 @@
 //! - **full URLs must be validated separately.** `for_uri_component` encodes
 //!   a component, not a full URL. to embed an untrusted URL, validate its
 //!   scheme and structure first, then encode for the final sink.
-//! - **template literals.** the JavaScript encoders do not encode backticks.
-//!   never embed untrusted data directly in ES2015+ template literals.
+//! - **template literals.** the string literal JavaScript encoders do not
+//!   encode backticks. use [`for_js_template`] to embed data directly in
+//!   ES2015+ template literals.
 //! - **grave accent.** unpatched Internet Explorer treats `` ` `` as an
 //!   attribute delimiter. `for_html_unquoted_attribute` encodes it, but
 //!   numeric entities decode back to the original character, so this is
@@ -178,7 +180,8 @@ pub use html::{
 pub use java::{for_java, write_java};
 pub use javascript::{
     for_javascript, for_javascript_attribute, for_javascript_block, for_javascript_source,
-    write_javascript, write_javascript_attribute, write_javascript_block, write_javascript_source,
+    for_js_template, write_javascript, write_javascript_attribute, write_javascript_block,
+    write_javascript_source, write_js_template,
 };
 pub use json::{for_json, write_json};
 pub use python::{
@@ -233,6 +236,7 @@ mod tests {
         assert_eq!(for_python_string(""), "");
         assert_eq!(for_python_bytes(""), "");
         assert_eq!(for_python_raw_string(""), "");
+        assert_eq!(for_js_template(""), "");
         assert_eq!(for_sql(""), "");
         assert_eq!(for_sql_backslash(""), "");
     }

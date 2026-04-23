@@ -66,6 +66,7 @@ output context so that only the necessary characters are encoded.
 | `for_javascript_attribute` | HTML event attributes | does not escape `/` |
 | `for_javascript_block` | `<script>` blocks | uses backslash quote escapes |
 | `for_javascript_source` | standalone .js / JSON files | minimal encoding |
+| `for_js_template` | ES6 template literal content | escapes `` ` `` and `${` |
 
 ### CSS
 
@@ -174,16 +175,18 @@ as `&#96;`, but numeric character references decode back to the original
 character, so this is not a complete fix. the safest mitigation is to avoid
 unquoted attributes entirely.
 
-**template literals:** the JavaScript encoders do **not** encode backticks.
-never embed untrusted data directly in ES2015+ template literals. instead,
-encode into a regular JavaScript string variable and reference it from the
-template literal:
+**template literals:** the string literal JavaScript encoders (`for_javascript`,
+`for_javascript_attribute`, etc.) do **not** encode backticks. to embed
+untrusted data directly inside an ES6 template literal, use `for_js_template`:
 
 ```js
 // WRONG — vulnerable:
 // `Hello ${unsafeInput}`
 
-// RIGHT:
+// RIGHT — use the template literal encoder:
+`Hello ${for_js_template(unsafeInput)}`
+
+// ALSO RIGHT — encode into a variable first:
 var x = '<contextual_encoder::for_javascript output>';
 `Hello ${x}`
 ```
