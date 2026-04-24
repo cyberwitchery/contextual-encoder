@@ -11,9 +11,9 @@ use contextual_encoder::{
     for_html, for_html_attribute, for_html_content, for_html_unquoted_attribute, for_java,
     for_javascript, for_javascript_attribute, for_javascript_block, for_javascript_source,
     for_json, for_python_bytes, for_python_raw_string, for_python_string, for_rust_byte_string,
-    for_rust_char, for_rust_string, for_sql, for_sql_backslash, for_uri_component, for_xml,
-    for_xml11, for_xml11_attribute, for_xml11_content, for_xml_attribute, for_xml_comment,
-    for_xml_content,
+    for_rust_char, for_rust_string, for_shell_single_quoted, for_sql, for_sql_backslash,
+    for_uri_component, for_xml, for_xml11, for_xml11_attribute, for_xml11_content,
+    for_xml_attribute, for_xml_comment, for_xml_content,
 };
 
 fn main() {
@@ -159,6 +159,14 @@ fn main() {
     println!(
         "  for_python_raw_string:        {}",
         for_python_raw_string(input)
+    );
+    println!();
+
+    // posix shell single-quoted strings — quote-break-requote for single quotes
+    println!("--- shell ---");
+    println!(
+        "  for_shell_single_quoted:      {}",
+        for_shell_single_quoted(input),
     );
     println!();
 
