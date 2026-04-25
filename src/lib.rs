@@ -5,7 +5,8 @@
 //! this crate provides context-aware encoding functions inspired by the
 //! [OWASP Java Encoder](https://owasp.org/owasp-java-encoder/). each function
 //! encodes input for safe embedding in a specific output context — web contexts
-//! (HTML, XML, JavaScript, CSS, URI) and source literal contexts (Java, Rust).
+//! (HTML, XML, JavaScript, CSS, URI) and source literal contexts (Java, Rust,
+//! Ruby).
 //!
 //! **disclaimer:** contextual-encoder is an independent Rust crate. its API and security model
 //! are inspired by the OWASP Java Encoder, but this project is not affiliated with,
@@ -102,6 +103,7 @@
 //! | [`for_rust_string`] | Rust string literals (`"..."`) |
 //! | [`for_rust_char`] | Rust char literals (`'...'`) |
 //! | [`for_rust_byte_string`] | Rust byte string literals (`b"..."`) |
+//! | [`for_ruby_string`] | Ruby double-quoted string literals (`"..."`) |
 //! | [`for_python_string`] | Python string literals (`"..."` or `'...'`) |
 //! | [`for_python_bytes`] | Python bytes literals (`b"..."` or `b'...'`) |
 //! | [`for_python_raw_string`] | Python raw string literals (`r"..."` or `r'...'`) |
@@ -160,6 +162,7 @@ pub mod java;
 pub mod javascript;
 pub mod json;
 pub mod python;
+pub mod ruby;
 pub mod rust;
 pub mod sql;
 pub mod uri;
@@ -188,6 +191,7 @@ pub use python::{
     for_python_bytes, for_python_raw_string, for_python_string, write_python_bytes,
     write_python_raw_string, write_python_string,
 };
+pub use ruby::{for_ruby_string, write_ruby_string};
 pub use rust::{
     for_rust_byte_string, for_rust_char, for_rust_string, write_rust_byte_string, write_rust_char,
     write_rust_string,
@@ -233,6 +237,7 @@ mod tests {
         assert_eq!(for_rust_string(""), "");
         assert_eq!(for_rust_char(""), "");
         assert_eq!(for_rust_byte_string(""), "");
+        assert_eq!(for_ruby_string(""), "");
         assert_eq!(for_python_string(""), "");
         assert_eq!(for_python_bytes(""), "");
         assert_eq!(for_python_raw_string(""), "");
@@ -320,6 +325,13 @@ mod tests {
         assert_eq!(for_rust_string("café"), "café");
         assert_eq!(for_rust_string("世界"), "世界");
         assert_eq!(for_rust_string("😀"), "😀");
+    }
+
+    #[test]
+    fn multibyte_utf8_ruby_string_passthrough() {
+        assert_eq!(for_ruby_string("café"), "café");
+        assert_eq!(for_ruby_string("世界"), "世界");
+        assert_eq!(for_ruby_string("😀"), "😀");
     }
 
     #[test]

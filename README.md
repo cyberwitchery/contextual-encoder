@@ -100,6 +100,12 @@ untrusted strings for safe embedding in source code literals.
 | `for_rust_char` | Rust char literals (`'...'`) | escapes `'` instead of `"` |
 | `for_rust_byte_string` | Rust byte string literals (`b"..."`) | non-ASCII → `\xHH` per UTF-8 byte |
 
+#### Ruby
+
+| function | safe for | notes |
+|----------|----------|-------|
+| `for_ruby_string` | Ruby double-quoted string literals (`"..."`) | escapes `#` to prevent interpolation, `\e` for ESC, non-ASCII passes through |
+
 #### Python
 
 | function | safe for | notes |
