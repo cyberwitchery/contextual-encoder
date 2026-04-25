@@ -105,6 +105,8 @@
 //! | [`for_python_string`] | Python string literals (`"..."` or `'...'`) |
 //! | [`for_python_bytes`] | Python bytes literals (`b"..."` or `b'...'`) |
 //! | [`for_python_raw_string`] | Python raw string literals (`r"..."` or `r'...'`) |
+//! | [`for_ruby_string`] | Ruby double-quoted string literals (`"..."`) |
+//! | [`for_ruby_single_quoted`] | Ruby single-quoted string literals (`'...'`) |
 //! | [`for_sql`] | Standard SQL string literals (`'...'`) |
 //! | [`for_sql_backslash`] | MySQL/MariaDB string literals with backslash escaping (`'...'`) |
 //!
@@ -160,6 +162,7 @@ pub mod java;
 pub mod javascript;
 pub mod json;
 pub mod python;
+pub mod ruby;
 pub mod rust;
 pub mod sql;
 pub mod uri;
@@ -187,6 +190,9 @@ pub use json::{for_json, write_json};
 pub use python::{
     for_python_bytes, for_python_raw_string, for_python_string, write_python_bytes,
     write_python_raw_string, write_python_string,
+};
+pub use ruby::{
+    for_ruby_single_quoted, for_ruby_string, write_ruby_single_quoted, write_ruby_string,
 };
 pub use rust::{
     for_rust_byte_string, for_rust_char, for_rust_string, write_rust_byte_string, write_rust_char,
@@ -236,6 +242,8 @@ mod tests {
         assert_eq!(for_python_string(""), "");
         assert_eq!(for_python_bytes(""), "");
         assert_eq!(for_python_raw_string(""), "");
+        assert_eq!(for_ruby_string(""), "");
+        assert_eq!(for_ruby_single_quoted(""), "");
         assert_eq!(for_js_template(""), "");
         assert_eq!(for_sql(""), "");
         assert_eq!(for_sql_backslash(""), "");
@@ -341,6 +349,20 @@ mod tests {
         assert_eq!(for_python_raw_string("café"), "café");
         assert_eq!(for_python_raw_string("世界"), "世界");
         assert_eq!(for_python_raw_string("😀"), "😀");
+    }
+
+    #[test]
+    fn multibyte_utf8_ruby_string_passthrough() {
+        assert_eq!(for_ruby_string("caf\u{00e9}"), "caf\u{00e9}");
+        assert_eq!(for_ruby_string("\u{4e16}\u{754c}"), "\u{4e16}\u{754c}");
+        assert_eq!(for_ruby_string("\u{1F600}"), "\u{1F600}");
+    }
+
+    #[test]
+    fn multibyte_utf8_ruby_single_quoted_passthrough() {
+        assert_eq!(for_ruby_single_quoted("café"), "café");
+        assert_eq!(for_ruby_single_quoted("世界"), "世界");
+        assert_eq!(for_ruby_single_quoted("😀"), "😀");
     }
 
     #[test]

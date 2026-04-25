@@ -2063,6 +2063,247 @@ mod sql {
 }
 
 // ===========================================================================
+// Ruby literal context tests
+// ===========================================================================
+
+mod ruby_literals {
+    use super::*;
+
+    // -- for_ruby_string --
+
+    #[test]
+    fn string_passthrough() {
+        assert_eq!(for_ruby_string("hello world"), "hello world");
+        assert_eq!(for_ruby_string(""), "");
+        assert_eq!(
+            for_ruby_string("caf\u{00e9} \u{65E5}\u{672C}\u{8A9E} \u{1F600}"),
+            "caf\u{00e9} \u{65E5}\u{672C}\u{8A9E} \u{1F600}"
+        );
+    }
+
+    #[test]
+    fn string_escapes_double_quote_not_single() {
+        assert_eq!(for_ruby_string(r#"a"b"#), r#"a\"b"#);
+        assert_eq!(for_ruby_string("a'b"), "a'b");
+    }
+
+    #[test]
+    fn string_all_named_escapes() {
+        assert_eq!(for_ruby_string("\x07"), "\\a");
+        assert_eq!(for_ruby_string("\x08"), "\\b");
+        assert_eq!(for_ruby_string("\t"), "\\t");
+        assert_eq!(for_ruby_string("\n"), "\\n");
+        assert_eq!(for_ruby_string("\x0B"), "\\v");
+        assert_eq!(for_ruby_string("\x0C"), "\\f");
+        assert_eq!(for_ruby_string("\r"), "\\r");
+    }
+
+    #[test]
+    fn string_hex_for_controls() {
+        assert_eq!(for_ruby_string("\x00"), "\\x00");
+        assert_eq!(for_ruby_string("\x01"), "\\x01");
+        assert_eq!(for_ruby_string("\x06"), "\\x06");
+        assert_eq!(for_ruby_string("\x0E"), "\\x0e");
+        assert_eq!(for_ruby_string("\x1F"), "\\x1f");
+        assert_eq!(for_ruby_string("\x7F"), "\\x7f");
+    }
+
+    #[test]
+    fn string_backslash() {
+        assert_eq!(for_ruby_string(r"a\b"), r"a\\b");
+    }
+
+    #[test]
+    fn string_nonchars_replaced() {
+        assert_eq!(for_ruby_string("\u{FDD0}"), " ");
+        assert_eq!(for_ruby_string("\u{FFFE}"), " ");
+    }
+
+    #[test]
+    fn string_supplementary_plane_passes_through() {
+        // ruby source is UTF-8 — no surrogate pairs needed
+        assert_eq!(for_ruby_string("\u{1F600}"), "\u{1F600}");
+        assert_eq!(for_ruby_string("\u{10000}"), "\u{10000}");
+    }
+
+    // -- interpolation escaping --
+
+    #[test]
+    fn string_interpolation_expression() {
+        assert_eq!(for_ruby_string("#{cmd}"), "\\#{cmd}");
+        assert_eq!(for_ruby_string("hello #{name}!"), "hello \\#{name}!");
+        assert_eq!(for_ruby_string("#{a} and #{b}"), "\\#{a} and \\#{b}");
+    }
+
+    #[test]
+    fn string_interpolation_ivar() {
+        assert_eq!(for_ruby_string("#@name"), "\\#@name");
+        assert_eq!(for_ruby_string("hi #@user"), "hi \\#@user");
+    }
+
+    #[test]
+    fn string_interpolation_gvar() {
+        assert_eq!(for_ruby_string("#$LOAD_PATH"), "\\#$LOAD_PATH");
+        assert_eq!(for_ruby_string("path: #$0"), "path: \\#$0");
+    }
+
+    #[test]
+    fn string_hash_without_interpolation() {
+        // # not followed by {, @, or $ is safe — passes through
+        assert_eq!(for_ruby_string("#tag"), "#tag");
+        assert_eq!(for_ruby_string("a # comment"), "a # comment");
+        assert_eq!(for_ruby_string("#"), "#");
+        assert_eq!(for_ruby_string("#!"), "#!");
+        assert_eq!(for_ruby_string("##"), "##");
+        assert_eq!(for_ruby_string("#123"), "#123");
+    }
+
+    #[test]
+    fn string_interpolation_injection() {
+        // attacker tries to inject code via interpolation
+        assert_eq!(
+            for_ruby_string("#{system('rm -rf /')}"),
+            "\\#{system('rm -rf /')}"
+        );
+    }
+
+    #[test]
+    fn string_xss_payload() {
+        // ruby string encoder does not encode < / > — they are not special
+        // in ruby string literals
+        assert_eq!(
+            for_ruby_string("<script>alert(\"xss\")</script>"),
+            "<script>alert(\\\"xss\\\")</script>"
+        );
+    }
+
+    #[test]
+    fn string_writer_matches() {
+        let input = "test\x00\"\\\n#{cmd}#@var#$gvar#tag cafe\u{0301}\u{1F600}";
+        let mut w = String::new();
+        write_ruby_string(&mut w, input).unwrap();
+        assert_eq!(for_ruby_string(input), w);
+    }
+
+    // -- for_ruby_single_quoted --
+
+    #[test]
+    fn single_passthrough() {
+        assert_eq!(for_ruby_single_quoted("hello world"), "hello world");
+        assert_eq!(for_ruby_single_quoted(""), "");
+    }
+
+    #[test]
+    fn single_escapes_single_quote_not_double() {
+        assert_eq!(for_ruby_single_quoted("a'b"), r"a\'b");
+        assert_eq!(for_ruby_single_quoted(r#"a"b"#), r#"a"b"#);
+    }
+
+    #[test]
+    fn single_escapes_backslash() {
+        assert_eq!(for_ruby_single_quoted(r"a\b"), r"a\\b");
+        assert_eq!(for_ruby_single_quoted(r"\\"), r"\\\\");
+    }
+
+    #[test]
+    fn single_no_interpolation() {
+        // single-quoted strings do not interpolate — # passes through
+        assert_eq!(for_ruby_single_quoted("#{cmd}"), "#{cmd}");
+        assert_eq!(for_ruby_single_quoted("#@name"), "#@name");
+        assert_eq!(for_ruby_single_quoted("#$var"), "#$var");
+    }
+
+    #[test]
+    fn single_controls_replaced() {
+        assert_eq!(for_ruby_single_quoted("\x00"), " ");
+        assert_eq!(for_ruby_single_quoted("\x01"), " ");
+        assert_eq!(for_ruby_single_quoted("\t"), " ");
+        assert_eq!(for_ruby_single_quoted("\n"), " ");
+        assert_eq!(for_ruby_single_quoted("\r"), " ");
+        assert_eq!(for_ruby_single_quoted("\x7F"), " ");
+    }
+
+    #[test]
+    fn single_all_c0_controls_replaced() {
+        for cp in 0x00u8..=0x1F {
+            let s = String::from(char::from(cp));
+            assert_eq!(for_ruby_single_quoted(&s), " ", "C0 control 0x{:02x}", cp);
+        }
+        assert_eq!(for_ruby_single_quoted("\x7F"), " ");
+    }
+
+    #[test]
+    fn single_nonchars_replaced() {
+        assert_eq!(for_ruby_single_quoted("\u{FDD0}"), " ");
+        assert_eq!(for_ruby_single_quoted("\u{FFFE}"), " ");
+        assert_eq!(for_ruby_single_quoted("\u{FFFF}"), " ");
+        assert_eq!(for_ruby_single_quoted("\u{1FFFE}"), " ");
+        assert_eq!(for_ruby_single_quoted("\u{10FFFF}"), " ");
+    }
+
+    #[test]
+    fn single_non_ascii_passes_through() {
+        assert_eq!(for_ruby_single_quoted("café"), "café");
+        assert_eq!(for_ruby_single_quoted("日本語"), "日本語");
+        assert_eq!(for_ruby_single_quoted("😀"), "😀");
+        assert_eq!(for_ruby_single_quoted("\u{10000}"), "\u{10000}");
+    }
+
+    #[test]
+    fn single_injection_prevented() {
+        // attacker tries to break out of single-quoted string
+        assert_eq!(
+            for_ruby_single_quoted("'; system('cmd'); '"),
+            "\\'; system(\\'cmd\\'); \\'"
+        );
+    }
+
+    #[test]
+    fn single_writer_matches() {
+        let input = "test\x00'\\hello café\u{FDD0}";
+        let mut w = String::new();
+        write_ruby_single_quoted(&mut w, input).unwrap();
+        assert_eq!(for_ruby_single_quoted(input), w);
+    }
+
+    // -- Ruby vs other languages --
+
+    #[test]
+    fn ruby_vs_go_string() {
+        // both pass non-ASCII through, both escape " and \
+        assert_eq!(for_ruby_string("café"), for_go_string("café"));
+        assert_eq!(for_ruby_string(r#"a"b"#), for_go_string(r#"a"b"#));
+        // ruby does not escape single quotes (like Go string)
+        assert_eq!(for_ruby_string("a'b"), for_go_string("a'b"));
+    }
+
+    #[test]
+    fn ruby_vs_python_quote_handling() {
+        // ruby double-quoted escapes only double quote
+        assert_eq!(for_ruby_string("a'b"), "a'b");
+        // python escapes both quotes
+        assert_eq!(for_python_string("a'b"), r"a\'b");
+    }
+
+    #[test]
+    fn ruby_string_vs_single_quoted_interpolation() {
+        // double-quoted escapes interpolation markers
+        assert_eq!(for_ruby_string("#{x}"), "\\#{x}");
+        // single-quoted passes them through (no interpolation in single-quoted)
+        assert_eq!(for_ruby_single_quoted("#{x}"), "#{x}");
+    }
+
+    #[test]
+    fn ruby_has_alert_and_vtab() {
+        // ruby has \a and \v like go and python
+        assert_eq!(for_ruby_string("\x07"), "\\a");
+        assert_eq!(for_ruby_string("\x0B"), "\\v");
+        assert_eq!(for_go_string("\x07"), "\\a");
+        assert_eq!(for_go_string("\x0B"), "\\v");
+    }
+}
+
+// ===========================================================================
 // cross-context tests
 // ===========================================================================
 
@@ -2080,10 +2321,14 @@ mod cross_context {
         let sql = for_sql(input);
         let sql_bs = for_sql_backslash(input);
 
+        let ruby = for_ruby_string(input);
+        let ruby_sq = for_ruby_single_quoted(input);
+
         // each produces different output appropriate for its context
         assert_ne!(html, js);
         assert_ne!(js, css);
         assert_ne!(css, uri);
+        assert_ne!(ruby, ruby_sq);
 
         // html uses HTML entities
         assert!(html.contains("&lt;"));
