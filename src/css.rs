@@ -37,7 +37,7 @@ use crate::engine::{encode_loop, is_unicode_noncharacter};
 /// # encoded characters
 ///
 /// C0 controls (U+0000-U+001F), `"`, `'`, `\`, `<`, `&`, `(`, `)`, `/`,
-/// `>`, DEL (U+007F), U+2028, U+2029.
+/// `>`, DEL (U+007F), C1 controls (U+0080-U+009F), U+2028, U+2029.
 ///
 /// # examples
 ///
@@ -114,7 +114,7 @@ fn needs_css_common_encoding(c: char) -> bool {
     let cp = c as u32;
     cp <= 0x1F
         || matches!(c, '"' | '\'' | '\\' | '<' | '&' | '/' | '>')
-        || cp == 0x7F
+        || (0x7F..=0x9F).contains(&cp) // DEL + C1 controls
         || cp == 0x2028
         || cp == 0x2029
         || is_unicode_noncharacter(cp)
@@ -215,6 +215,17 @@ mod tests {
     }
 
     #[test]
+    fn css_string_encodes_c1_controls() {
+        assert_eq!(for_css_string("\u{0080}"), r"\80");
+        assert_eq!(for_css_string("\u{0085}"), r"\85");
+        assert_eq!(for_css_string("\u{009F}"), r"\9f");
+        // next char is hex digit → trailing space
+        assert_eq!(for_css_string("\u{0080}a"), r"\80 a");
+        // next char is not hex → no trailing space
+        assert_eq!(for_css_string("\u{0080}z"), r"\80z");
+    }
+
+    #[test]
     fn css_string_encodes_line_separators() {
         assert_eq!(for_css_string("\u{2028}"), r"\2028");
         assert_eq!(for_css_string("\u{2029}"), r"\2029");
@@ -263,5 +274,12 @@ mod tests {
     #[test]
     fn css_url_encodes_backslash() {
         assert_eq!(for_css_url(r"a\b"), r"a\5c b");
+    }
+
+    #[test]
+    fn css_url_encodes_c1_controls() {
+        assert_eq!(for_css_url("\u{0080}"), r"\80");
+        assert_eq!(for_css_url("\u{0085}"), r"\85");
+        assert_eq!(for_css_url("\u{009F}"), r"\9f");
     }
 }

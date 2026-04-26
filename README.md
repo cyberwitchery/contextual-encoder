@@ -216,7 +216,7 @@ specific to this crate.
 - encoding rules for `for_html`, `for_html_content`, `for_html_attribute`,
   `for_html_unquoted_attribute`
 - JavaScript encoding rules across all four contexts
-- CSS hex escape format with trailing space separator
+- CSS hex escape format with trailing space separator (including C1 controls)
 - URI component percent-encoding of UTF-8 bytes
 - security caveats (grave accent, template literals, HTML comments, full URLs)
 
@@ -227,10 +227,6 @@ specific to this crate.
   (U+10000+) are valid and pass through or are encoded normally.
 - **`for_html` uses `&#34;` and `&#39;`** for quote encoding rather than
   `&quot;` — both are valid HTML and the numeric form is shorter.
-- **C1 control handling in CSS:** the Java encoder may encode C1 controls
-  (U+0080-U+009F) in CSS contexts. this crate currently does not encode them
-  in CSS, only in HTML/XML contexts. this is a conservative choice that may
-  be revisited.
 - **`-` (hyphen) in JavaScript:** the Java encoder may escape `-` as `\-` in
   some JavaScript contexts to prevent `-->` sequences. this crate does not
   encode `-` in JavaScript. the `-->` sequence inside a JS string literal is

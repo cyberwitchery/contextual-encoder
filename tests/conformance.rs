@@ -609,6 +609,55 @@ mod css {
         assert_eq!(for_css_string("日本語"), "日本語");
     }
 
+    // -- C1 control characters (U+0080-U+009F) --
+
+    #[test]
+    fn c1_controls_encoded() {
+        // boundary values
+        assert_eq!(for_css_string("\u{0080}"), r"\80");
+        assert_eq!(for_css_string("\u{009F}"), r"\9f");
+        // NEL (U+0085) — can affect CSS parsing
+        assert_eq!(for_css_string("\u{0085}"), r"\85");
+    }
+
+    #[test]
+    fn c1_controls_full_range() {
+        // every C1 control must be encoded, not passed through
+        for cp in 0x80u32..=0x9F {
+            let c = char::from_u32(cp).unwrap();
+            let input = String::from(c);
+            let encoded = for_css_string(&input);
+            assert!(
+                encoded.starts_with('\\'),
+                "U+{cp:04X} should be CSS-encoded, got {encoded:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn c1_controls_trailing_space_rules() {
+        // next char is hex digit → trailing space
+        assert_eq!(for_css_string("\u{0085}a"), r"\85 a");
+        assert_eq!(for_css_string("\u{0085}F"), r"\85 F");
+        // next char is not hex → no trailing space
+        assert_eq!(for_css_string("\u{0085}z"), r"\85z");
+        assert_eq!(for_css_string("\u{0085}!"), r"\85!");
+    }
+
+    #[test]
+    fn c1_controls_in_url_context() {
+        assert_eq!(for_css_url("\u{0080}"), r"\80");
+        assert_eq!(for_css_url("\u{0085}"), r"\85");
+        assert_eq!(for_css_url("\u{009F}"), r"\9f");
+    }
+
+    #[test]
+    fn non_ascii_above_c1_preserved() {
+        // U+00A0 (NBSP) is right above C1 range — should NOT be encoded
+        assert_eq!(for_css_string("\u{00A0}"), "\u{00A0}");
+        assert_eq!(for_css_string("café"), "café");
+    }
+
     // -- for_css_url vs for_css_string --
 
     #[test]
