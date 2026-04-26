@@ -10,10 +10,10 @@ use contextual_encoder::{
     for_cdata, for_css_string, for_css_url, for_go_byte_string, for_go_char, for_go_string,
     for_html, for_html_attribute, for_html_content, for_html_unquoted_attribute, for_java,
     for_javascript, for_javascript_attribute, for_javascript_block, for_javascript_source,
-    for_json, for_python_bytes, for_python_raw_string, for_python_string, for_rust_byte_string,
-    for_rust_char, for_rust_string, for_sql, for_sql_backslash, for_uri_component, for_xml,
-    for_xml11, for_xml11_attribute, for_xml11_content, for_xml_attribute, for_xml_comment,
-    for_xml_content,
+    for_js_template, for_json, for_python_bytes, for_python_raw_string, for_python_string,
+    for_rust_byte_string, for_rust_char, for_rust_string, for_sql, for_sql_backslash,
+    for_uri_component, for_xml, for_xml11, for_xml11_attribute, for_xml11_content,
+    for_xml_attribute, for_xml_comment, for_xml_content,
 };
 
 fn main() {
@@ -69,6 +69,13 @@ fn main() {
     println!(
         "  for_javascript_source:        {}",
         for_javascript_source(input)
+    );
+
+    // ES6 template literals (`...`) — escapes backtick and ${} interpolation
+    let template_input = r#"`Hello ${name}`, welcome</script>"#;
+    println!(
+        "  for_js_template:              {}",
+        for_js_template(template_input)
     );
     println!();
 

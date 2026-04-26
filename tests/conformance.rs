@@ -322,6 +322,216 @@ mod javascript {
 }
 
 // ===========================================================================
+// JS template literal context tests
+// ===========================================================================
+
+mod js_template {
+    use super::*;
+
+    // -- interpolation injection --
+
+    #[test]
+    fn interpolation_breakout() {
+        assert_eq!(for_js_template("${alert(1)}"), r"\${alert(1)}");
+    }
+
+    #[test]
+    fn multiple_interpolations() {
+        assert_eq!(for_js_template("${a} and ${b}"), r"\${a} and \${b}");
+    }
+
+    #[test]
+    fn dollar_without_brace_passes_through() {
+        assert_eq!(for_js_template("$100"), "$100");
+        assert_eq!(for_js_template("a $ b"), "a $ b");
+        assert_eq!(for_js_template("a$"), "a$");
+    }
+
+    #[test]
+    fn nested_interpolation() {
+        // ${${...}} — both $ should be escaped
+        assert_eq!(for_js_template("${${x}}"), r"\${\${x}}");
+    }
+
+    // -- backtick breakout --
+
+    #[test]
+    fn backtick_escaped() {
+        assert_eq!(for_js_template("`"), r"\`");
+        assert_eq!(for_js_template("hello `world`"), r"hello \`world\`");
+    }
+
+    #[test]
+    fn tagged_template_breakout() {
+        // attacker tries to close template and start a tagged template
+        assert_eq!(for_js_template("`+evil`"), r"\`+evil\`");
+    }
+
+    // -- script block breakout --
+
+    #[test]
+    fn script_block_breakout() {
+        assert_eq!(
+            for_js_template("</script><script>alert(1)</script>"),
+            r"<\/script><script>alert(1)<\/script>"
+        );
+    }
+
+    // -- backslash escaping --
+
+    #[test]
+    fn backslash_escaped() {
+        assert_eq!(for_js_template(r"\"), r"\\");
+        assert_eq!(for_js_template(r"\\"), r"\\\\");
+        // backslash before backtick — both are encoded
+        assert_eq!(for_js_template("\\`"), "\\\\\\`");
+    }
+
+    // -- control characters --
+
+    #[test]
+    fn all_named_escapes() {
+        assert_eq!(for_js_template("\x08"), r"\b");
+        assert_eq!(for_js_template("\t"), r"\t");
+        assert_eq!(for_js_template("\n"), r"\n");
+        assert_eq!(for_js_template("\x0C"), r"\f");
+        assert_eq!(for_js_template("\r"), r"\r");
+    }
+
+    #[test]
+    fn hex_escapes_for_c0_controls() {
+        assert_eq!(for_js_template("\x00"), r"\x00");
+        assert_eq!(for_js_template("\x01"), r"\x01");
+        assert_eq!(for_js_template("\x07"), r"\x07");
+        assert_eq!(for_js_template("\x0B"), r"\x0b");
+        assert_eq!(for_js_template("\x0E"), r"\x0e");
+        assert_eq!(for_js_template("\x1F"), r"\x1f");
+    }
+
+    // -- unicode line terminators --
+
+    #[test]
+    fn unicode_line_terminators() {
+        assert_eq!(for_js_template("\u{2028}"), r"\u2028");
+        assert_eq!(for_js_template("\u{2029}"), r"\u2029");
+        assert_eq!(for_js_template("a\u{2028}b\u{2029}c"), r"a\u2028b\u2029c");
+    }
+
+    // -- quotes NOT encoded --
+
+    #[test]
+    fn quotes_pass_through() {
+        // unlike string literal encoders, quotes are ordinary in template literals
+        assert_eq!(for_js_template(r#"a"b"#), r#"a"b"#);
+        assert_eq!(for_js_template("a'b"), "a'b");
+        assert_eq!(for_js_template(r#"say "it's" fine"#), r#"say "it's" fine"#);
+    }
+
+    // -- unicode --
+
+    #[test]
+    fn preserves_non_ascii() {
+        assert_eq!(for_js_template("café"), "café");
+        assert_eq!(for_js_template("日本語"), "日本語");
+    }
+
+    #[test]
+    fn emoji() {
+        assert_eq!(for_js_template("😀"), "😀");
+        assert_eq!(for_js_template("hello 😀 world"), "hello 😀 world");
+    }
+
+    #[test]
+    fn supplementary_plane_characters() {
+        assert_eq!(for_js_template("\u{10000}"), "\u{10000}");
+        assert_eq!(for_js_template("\u{1F600}"), "\u{1F600}");
+    }
+
+    // -- boundary conditions --
+
+    #[test]
+    fn empty_string() {
+        assert_eq!(for_js_template(""), "");
+    }
+
+    #[test]
+    fn single_safe_char() {
+        assert_eq!(for_js_template("a"), "a");
+    }
+
+    #[test]
+    fn long_safe_string() {
+        let s = "a".repeat(10000);
+        assert_eq!(for_js_template(&s), s);
+    }
+
+    #[test]
+    fn already_escaped_input() {
+        // encoding should double-escape
+        assert_eq!(for_js_template(r"\n"), r"\\n");
+        assert_eq!(for_js_template(r"\`"), r"\\\`");
+        assert_eq!(for_js_template(r"\${x}"), r"\\\${x}");
+    }
+
+    // -- context comparisons --
+
+    #[test]
+    fn template_vs_string_quotes() {
+        // for_javascript encodes quotes; for_js_template does not
+        assert_eq!(for_javascript(r#"a"b"#), r"a\x22b");
+        assert_eq!(for_js_template(r#"a"b"#), r#"a"b"#);
+        assert_eq!(for_javascript("a'b"), r"a\x27b");
+        assert_eq!(for_js_template("a'b"), "a'b");
+    }
+
+    #[test]
+    fn template_vs_string_backtick() {
+        // for_javascript does NOT encode backtick; for_js_template does
+        assert_eq!(for_javascript("`"), "`");
+        assert_eq!(for_js_template("`"), r"\`");
+    }
+
+    #[test]
+    fn template_vs_string_interpolation() {
+        // for_javascript passes ${...} through; for_js_template escapes it
+        assert_eq!(for_javascript("${x}"), "${x}");
+        assert_eq!(for_js_template("${x}"), r"\${x}");
+    }
+
+    // -- mixed payloads --
+
+    #[test]
+    fn mixed_xss_payload() {
+        assert_eq!(
+            for_js_template("`Hello ${name}`, welcome\\n"),
+            r"\`Hello \${name}\`, welcome\\n"
+        );
+    }
+
+    // -- writer parity --
+
+    #[test]
+    fn writer_matches_string() {
+        let input = "`Hello ${name}` \\ </script> \t\n café 😀";
+        let string_result = for_js_template(input);
+        let mut writer_result = String::new();
+        write_js_template(&mut writer_result, input).unwrap();
+        assert_eq!(string_result, writer_result);
+    }
+
+    #[test]
+    fn writer_matches_string_all_categories() {
+        // input covering: passthrough, backtick, interpolation, backslash,
+        // slash, named escapes, hex controls, line separators, non-ASCII
+        let input = "abc`${x}\\\t\n\r\x0C\x08\x00\x1F/\u{2028}\u{2029}café😀";
+        let string_result = for_js_template(input);
+        let mut writer_result = String::new();
+        write_js_template(&mut writer_result, input).unwrap();
+        assert_eq!(string_result, writer_result);
+    }
+}
+
+// ===========================================================================
 // CSS context tests
 // ===========================================================================
 
