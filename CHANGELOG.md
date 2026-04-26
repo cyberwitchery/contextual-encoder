@@ -1,6 +1,6 @@
 # changelog
 
-## [unreleased]
+## [0.3.0] - 2026-04-26
 
 - Ruby string literal encoder: `for_ruby_string` — escapes quotes, hash signs (interpolation prevention), and control characters for safe embedding in double-quoted Ruby strings
 - writer-based variant for Ruby encoder
