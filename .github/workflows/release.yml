@@ -72,6 +72,6 @@ jobs:
           files: /tmp/contextual-encoder-sbom/sbom-${{ github.ref_name }}.cdx.json
 
       - name: publish to crates.io
-        run: cargo publish --no-verify
+        run: cargo publish --allow-dirty
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
