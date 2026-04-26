@@ -1650,6 +1650,128 @@ mod python_literals {
 }
 
 // ===========================================================================
+// Ruby literal context tests
+// ===========================================================================
+
+mod ruby_literals {
+    use super::*;
+
+    #[test]
+    fn string_passthrough() {
+        assert_eq!(for_ruby_string("hello world"), "hello world");
+        assert_eq!(for_ruby_string(""), "");
+        assert_eq!(
+            for_ruby_string("caf\u{00e9} \u{65E5}\u{672C}\u{8A9E} \u{1F600}"),
+            "caf\u{00e9} \u{65E5}\u{672C}\u{8A9E} \u{1F600}"
+        );
+    }
+
+    #[test]
+    fn string_escapes_double_quote_not_single() {
+        assert_eq!(for_ruby_string(r#"a"b"#), r#"a\"b"#);
+        assert_eq!(for_ruby_string("a'b"), "a'b");
+    }
+
+    #[test]
+    fn string_all_named_escapes() {
+        assert_eq!(for_ruby_string("\x07"), "\\a");
+        assert_eq!(for_ruby_string("\x08"), "\\b");
+        assert_eq!(for_ruby_string("\t"), "\\t");
+        assert_eq!(for_ruby_string("\n"), "\\n");
+        assert_eq!(for_ruby_string("\x0B"), "\\v");
+        assert_eq!(for_ruby_string("\x0C"), "\\f");
+        assert_eq!(for_ruby_string("\r"), "\\r");
+        assert_eq!(for_ruby_string("\x1B"), "\\e");
+    }
+
+    #[test]
+    fn string_hex_for_controls() {
+        assert_eq!(for_ruby_string("\x00"), "\\x00");
+        assert_eq!(for_ruby_string("\x01"), "\\x01");
+        assert_eq!(for_ruby_string("\x06"), "\\x06");
+        assert_eq!(for_ruby_string("\x0E"), "\\x0e");
+        assert_eq!(for_ruby_string("\x1F"), "\\x1f");
+        assert_eq!(for_ruby_string("\x7F"), "\\x7f");
+    }
+
+    #[test]
+    fn string_backslash() {
+        assert_eq!(for_ruby_string(r"a\b"), r"a\\b");
+    }
+
+    #[test]
+    fn string_hash_interpolation_prevention() {
+        // #{expr} interpolation
+        assert_eq!(for_ruby_string("hello #{name}"), r"hello \#{name}");
+        // #$global interpolation
+        assert_eq!(for_ruby_string("#$PATH"), r"\#$PATH");
+        // #@ivar interpolation
+        assert_eq!(for_ruby_string("#@name"), r"\#@name");
+        // all # are escaped unconditionally for safety
+        assert_eq!(for_ruby_string("color #ff0000"), r"color \#ff0000");
+    }
+
+    #[test]
+    fn string_nonchars_replaced() {
+        assert_eq!(for_ruby_string("\u{FDD0}"), " ");
+        assert_eq!(for_ruby_string("\u{FFFE}"), " ");
+    }
+
+    #[test]
+    fn string_supplementary_plane_passes_through() {
+        // ruby source is UTF-8 — no surrogate pairs needed
+        assert_eq!(for_ruby_string("\u{1F600}"), "\u{1F600}");
+        assert_eq!(for_ruby_string("\u{10000}"), "\u{10000}");
+    }
+
+    #[test]
+    fn string_xss_payload() {
+        // ruby string encoder does not encode < / > — they are not special
+        // in ruby string literals
+        assert_eq!(
+            for_ruby_string("<script>alert(\"xss\")</script>"),
+            "<script>alert(\\\"xss\\\")</script>"
+        );
+    }
+
+    #[test]
+    fn string_writer_matches() {
+        let input = "test\x00\"\\\n#{}caf\u{00e9}\u{1F600}\x1B";
+        let mut w = String::new();
+        write_ruby_string(&mut w, input).unwrap();
+        assert_eq!(for_ruby_string(input), w);
+    }
+
+    // -- Ruby vs other languages --
+
+    #[test]
+    fn ruby_vs_python_quote_handling() {
+        // ruby only escapes double quote; python escapes both
+        assert_eq!(for_ruby_string("a'b"), "a'b");
+        assert_eq!(for_python_string("a'b"), r"a\'b");
+        // both escape double quote
+        assert_eq!(for_ruby_string(r#"a"b"#), r#"a\"b"#);
+        assert_eq!(for_python_string(r#"a"b"#), r#"a\"b"#);
+    }
+
+    #[test]
+    fn ruby_vs_go_esc_handling() {
+        // ruby has \e for ESC; go uses \x1b
+        assert_eq!(for_ruby_string("\x1B"), "\\e");
+        assert_eq!(for_go_string("\x1B"), "\\x1b");
+    }
+
+    #[test]
+    fn ruby_hash_escape_unique() {
+        // ruby escapes # to prevent interpolation; other languages don't
+        assert_eq!(for_ruby_string("#"), "\\#");
+        assert_eq!(for_python_string("#"), "#");
+        assert_eq!(for_go_string("#"), "#");
+        assert_eq!(for_rust_string("#"), "#");
+    }
+}
+
+// ===========================================================================
 // JSON context tests
 // ===========================================================================
 
