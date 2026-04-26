@@ -4,6 +4,7 @@
 
 - Ruby string literal encoder: `for_ruby_string` — escapes quotes, hash signs (interpolation prevention), and control characters for safe embedding in double-quoted Ruby strings
 - writer-based variant for Ruby encoder
+- CSS encoders (`for_css_string`, `for_css_url`) now encode C1 control characters (U+0080-U+009F), matching OWASP Java Encoder behaviour — U+0085 NEL in particular can affect CSS parsing
 - ES6 template literal encoder: `for_js_template` — escapes backticks and `${` interpolation markers for safe embedding inside template literals
 - writer-based variant for template literal encoder
 - **breaking:** `for_json` now escapes forward slash (`/`) as `\/` to prevent `</script>` breakout when JSON is embedded in HTML `<script>` blocks (RFC 8259 §7 permits `\/`)
