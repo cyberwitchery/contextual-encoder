@@ -24,7 +24,10 @@
 
 use std::fmt;
 
-use crate::engine::{encode_loop, is_unicode_noncharacter, write_utf8_hex_bytes};
+use crate::engine::{
+    encode_loop, is_unicode_noncharacter, needs_byte_string_encoding, write_byte_string_encoded,
+    write_rust_named_escape,
+};
 
 // ---------------------------------------------------------------------------
 // for_rust_string — safe for Rust string literals ("...")
@@ -153,35 +156,9 @@ pub fn for_rust_byte_string(input: &str) -> String {
 ///
 /// see [`for_rust_byte_string`] for encoding rules.
 pub fn write_rust_byte_string<W: fmt::Write>(out: &mut W, input: &str) -> fmt::Result {
-    encode_loop(
-        out,
-        input,
-        needs_rust_byte_string_encoding,
-        write_rust_byte_string_encoded,
-    )
-}
-
-fn needs_rust_byte_string_encoding(c: char) -> bool {
-    matches!(c, '\x00'..='\x1F' | '\x7F' | '"' | '\\') || !c.is_ascii()
-}
-
-fn write_rust_byte_string_encoded<W: fmt::Write>(
-    out: &mut W,
-    c: char,
-    _next: Option<char>,
-) -> fmt::Result {
-    match c {
-        '\0' => out.write_str("\\0"),
-        '\t' => out.write_str("\\t"),
-        '\n' => out.write_str("\\n"),
-        '\r' => out.write_str("\\r"),
-        '"' => out.write_str("\\\""),
-        '\\' => out.write_str("\\\\"),
-        // non-ASCII → encode each UTF-8 byte
-        c if !c.is_ascii() => write_utf8_hex_bytes(out, c),
-        // other C0 controls and DEL
-        c => write!(out, "\\x{:02x}", c as u32),
-    }
+    encode_loop(out, input, needs_byte_string_encoding, |out, c, _next| {
+        write_byte_string_encoded(out, c, write_rust_named_escape)
+    })
 }
 
 #[cfg(test)]
