@@ -26,7 +26,8 @@
 use std::fmt;
 
 use crate::engine::{
-    encode_loop, is_unicode_noncharacter, write_c0_named_escape, write_utf8_hex_bytes,
+    encode_loop, is_unicode_noncharacter, needs_byte_string_encoding, write_byte_string_encoded,
+    write_c0_named_escape,
 };
 
 // ---------------------------------------------------------------------------
@@ -156,33 +157,9 @@ pub fn for_go_byte_string(input: &str) -> String {
 ///
 /// see [`for_go_byte_string`] for encoding rules.
 pub fn write_go_byte_string<W: fmt::Write>(out: &mut W, input: &str) -> fmt::Result {
-    encode_loop(
-        out,
-        input,
-        needs_go_byte_string_encoding,
-        write_go_byte_string_encoded,
-    )
-}
-
-fn needs_go_byte_string_encoding(c: char) -> bool {
-    matches!(c, '\x00'..='\x1F' | '\x7F' | '"' | '\\') || !c.is_ascii()
-}
-
-fn write_go_byte_string_encoded<W: fmt::Write>(
-    out: &mut W,
-    c: char,
-    _next: Option<char>,
-) -> fmt::Result {
-    if let Some(r) = write_c0_named_escape(out, c) {
-        return r;
-    }
-    match c {
-        '"' => out.write_str("\\\""),
-        // non-ASCII → encode each UTF-8 byte
-        c if !c.is_ascii() => write_utf8_hex_bytes(out, c),
-        // other C0 controls and DEL
-        c => write!(out, "\\x{:02x}", c as u32),
-    }
+    encode_loop(out, input, needs_byte_string_encoding, |out, c, _next| {
+        write_byte_string_encoded(out, c, write_c0_named_escape)
+    })
 }
 
 #[cfg(test)]

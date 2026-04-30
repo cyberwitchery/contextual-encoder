@@ -88,6 +88,56 @@ pub(crate) fn is_invalid_for_xml(c: char) -> bool {
         || is_unicode_noncharacter(cp)
 }
 
+/// attempts to write a rust-style named escape for the given character.
+///
+/// covers the escapes used by rust: NUL (`\0`), TAB (`\t`), LF (`\n`),
+/// CR (`\r`), and backslash (`\\`).
+///
+/// returns `Some(Ok(()))` if an escape was written, `Some(Err(..))` on
+/// write error, or `None` if the character has no named escape.
+pub(crate) fn write_rust_named_escape<W: fmt::Write>(out: &mut W, c: char) -> Option<fmt::Result> {
+    let s = match c {
+        '\0' => "\\0",
+        '\t' => "\\t",
+        '\n' => "\\n",
+        '\r' => "\\r",
+        '\\' => "\\\\",
+        _ => return None,
+    };
+    Some(out.write_str(s))
+}
+
+/// returns true if a character needs encoding in a byte string context.
+///
+/// this predicate is shared by go and rust byte string encoders. it flags
+/// C0 controls, DEL, quotes, backslashes, and all non-ASCII characters.
+pub(crate) fn needs_byte_string_encoding(c: char) -> bool {
+    matches!(c, '\x00'..='\x1F' | '\x7F' | '"' | '\\') || !c.is_ascii()
+}
+
+/// shared byte string encoder used by go and rust byte string contexts.
+///
+/// handles quote escaping (`"` → `\"`), non-ASCII → hex byte encoding,
+/// and C0/DEL → `\xHH` fallback. named escapes are language-specific
+/// and provided by the caller (e.g. `write_c0_named_escape` for go,
+/// `write_rust_named_escape` for rust).
+pub(crate) fn write_byte_string_encoded<W, N>(out: &mut W, c: char, named_escape: N) -> fmt::Result
+where
+    W: fmt::Write,
+    N: FnOnce(&mut W, char) -> Option<fmt::Result>,
+{
+    if let Some(r) = named_escape(out, c) {
+        return r;
+    }
+    match c {
+        '"' => out.write_str("\\\""),
+        // non-ASCII → encode each UTF-8 byte
+        c if !c.is_ascii() => write_utf8_hex_bytes(out, c),
+        // other C0 controls and DEL
+        c => write!(out, "\\x{:02x}", c as u32),
+    }
+}
+
 /// returns true if the code point is a unicode non-character.
 ///
 /// non-characters are: U+FDD0-U+FDEF and every code point ending in
