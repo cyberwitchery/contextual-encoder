@@ -11,6 +11,8 @@
 //! - other C0 controls and DEL → `\u00HH` (4-digit unicode escape, not
 //!   `\xHH` which is variable-length in C# and can consume following hex
 //!   digits)
+//! - U+0085 (NEL), U+2028 (LINE SEPARATOR), U+2029 (PARAGRAPH SEPARATOR)
+//!   → `\u0085`, `\u2028`, `\u2029` (C# line terminators)
 //! - supplementary plane characters (U+10000+) → `\UHHHHHHHH` (8-digit
 //!   unicode escape)
 //! - unicode non-characters → space
@@ -32,6 +34,7 @@ use crate::engine::{encode_loop, is_unicode_noncharacter};
 /// | BEL, BS, TAB, LF, VT, FF, CR | named escape (`\a`, `\b`, etc.) |
 /// | `"`, `\` | `\"`, `\\` |
 /// | other C0 controls, DEL | `\u00HH` |
+/// | U+0085 (NEL), U+2028, U+2029 | `\uHHHH` (line terminators) |
 /// | supplementary plane (U+10000+) | `\UHHHHHHHH` |
 /// | unicode non-characters | space |
 ///
@@ -65,6 +68,8 @@ pub fn write_csharp<W: fmt::Write>(out: &mut W, input: &str) -> fmt::Result {
 fn needs_csharp_encoding(c: char) -> bool {
     match c {
         '\x00'..='\x1F' | '\x7F' | '"' | '\\' => true,
+        // C# line terminators that break string literals
+        '\u{0085}' | '\u{2028}' | '\u{2029}' => true,
         c if (c as u32) >= 0x10000 => true,
         c if is_unicode_noncharacter(c as u32) => true,
         _ => false,
@@ -83,6 +88,10 @@ fn write_csharp_encoded<W: fmt::Write>(out: &mut W, c: char, _next: Option<char>
         '\r' => out.write_str("\\r"),
         '"' => out.write_str("\\\""),
         '\\' => out.write_str("\\\\"),
+        // C# line terminators
+        '\u{0085}' => out.write_str("\\u0085"),
+        '\u{2028}' => out.write_str("\\u2028"),
+        '\u{2029}' => out.write_str("\\u2029"),
         c if is_unicode_noncharacter(c as u32) => out.write_char(' '),
         // supplementary plane → \UHHHHHHHH
         c if (c as u32) >= 0x10000 => {
@@ -148,6 +157,18 @@ mod tests {
     fn noncharacters_replaced_with_space() {
         assert_eq!(for_csharp("\u{FDD0}"), " ");
         assert_eq!(for_csharp("\u{FFFE}"), " ");
+    }
+
+    #[test]
+    fn line_terminators_escaped() {
+        // U+0085 NEL
+        assert_eq!(for_csharp("\u{0085}"), "\\u0085");
+        // U+2028 LINE SEPARATOR
+        assert_eq!(for_csharp("\u{2028}"), "\\u2028");
+        // U+2029 PARAGRAPH SEPARATOR
+        assert_eq!(for_csharp("\u{2029}"), "\\u2029");
+        // embedded in text
+        assert_eq!(for_csharp("a\u{2028}b"), "a\\u2028b");
     }
 
     #[test]

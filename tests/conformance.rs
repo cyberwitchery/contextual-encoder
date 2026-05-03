@@ -2521,6 +2521,13 @@ mod csharp_literals {
     }
 
     #[test]
+    fn line_terminators() {
+        assert_eq!(for_csharp("\u{0085}"), "\\u0085");
+        assert_eq!(for_csharp("\u{2028}"), "\\u2028");
+        assert_eq!(for_csharp("\u{2029}"), "\\u2029");
+    }
+
+    #[test]
     fn mixed_xss_payload() {
         // C# encoder does not encode < / > — they are not special
         // in C# string literals
