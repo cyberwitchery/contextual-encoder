@@ -95,6 +95,7 @@
 //!
 //! | function | safe for |
 //! |----------|----------|
+//! | [`for_csharp`] | C# string literals (`"..."`) |
 //! | [`for_json`] | JSON string values |
 //! | [`for_java`] | Java string / char literals |
 //! | [`for_go_string`] | Go interpreted string literals (`"..."`) |
@@ -155,6 +156,7 @@
 //! assert_eq!(buf, "safe &amp; sound");
 //! ```
 
+pub mod csharp;
 pub mod css;
 pub mod go;
 pub mod html;
@@ -171,6 +173,7 @@ pub mod xml;
 mod engine;
 
 // convenience re-exports — users can `use contextual_encoder::for_html` directly
+pub use csharp::{for_csharp, write_csharp};
 pub use css::{for_css_string, for_css_url, write_css_string, write_css_url};
 pub use go::{
     for_go_byte_string, for_go_char, for_go_string, write_go_byte_string, write_go_char,
@@ -242,6 +245,7 @@ mod tests {
         assert_eq!(for_python_bytes(""), "");
         assert_eq!(for_python_raw_string(""), "");
         assert_eq!(for_js_template(""), "");
+        assert_eq!(for_csharp(""), "");
         assert_eq!(for_sql(""), "");
         assert_eq!(for_sql_backslash(""), "");
     }
@@ -353,6 +357,13 @@ mod tests {
         assert_eq!(for_python_raw_string("café"), "café");
         assert_eq!(for_python_raw_string("世界"), "世界");
         assert_eq!(for_python_raw_string("😀"), "😀");
+    }
+
+    #[test]
+    fn multibyte_utf8_csharp() {
+        assert_eq!(for_csharp("café"), "café");
+        assert_eq!(for_csharp("世界"), "世界");
+        assert_eq!(for_csharp("😀"), "\\U0001f600");
     }
 
     #[test]

@@ -2444,6 +2444,163 @@ mod sql {
 }
 
 // ===========================================================================
+// C# literal context tests
+// ===========================================================================
+
+mod csharp_literals {
+    use super::*;
+
+    #[test]
+    fn passthrough() {
+        assert_eq!(for_csharp("hello world"), "hello world");
+        assert_eq!(for_csharp(""), "");
+        assert_eq!(for_csharp("café 日本語"), "café 日本語");
+    }
+
+    #[test]
+    fn named_escapes() {
+        assert_eq!(for_csharp("\0"), "\\0");
+        assert_eq!(for_csharp("\x07"), "\\a");
+        assert_eq!(for_csharp("\x08"), "\\b");
+        assert_eq!(for_csharp("\t"), "\\t");
+        assert_eq!(for_csharp("\n"), "\\n");
+        assert_eq!(for_csharp("\x0B"), "\\v");
+        assert_eq!(for_csharp("\x0C"), "\\f");
+        assert_eq!(for_csharp("\r"), "\\r");
+    }
+
+    #[test]
+    fn quotes_and_backslash() {
+        assert_eq!(for_csharp(r#"say "hi""#), r#"say \"hi\""#);
+        assert_eq!(for_csharp(r"back\slash"), r"back\\slash");
+    }
+
+    #[test]
+    fn single_quote_not_escaped() {
+        // C# string literals don't need single quotes escaped
+        assert_eq!(for_csharp("it's"), "it's");
+    }
+
+    #[test]
+    fn unicode_escapes_for_controls() {
+        // C0 controls without named escapes → \u00HH
+        assert_eq!(for_csharp("\x01"), "\\u0001");
+        assert_eq!(for_csharp("\x02"), "\\u0002");
+        assert_eq!(for_csharp("\x06"), "\\u0006");
+        assert_eq!(for_csharp("\x0E"), "\\u000e");
+        assert_eq!(for_csharp("\x1F"), "\\u001f");
+    }
+
+    #[test]
+    fn del_unicode_escape() {
+        // DEL = 0x7F → \u007f
+        assert_eq!(for_csharp("a\x7Fb"), "a\\u007fb");
+    }
+
+    #[test]
+    fn supplementary_plane() {
+        // U+1F600 GRINNING FACE → \U0001f600
+        assert_eq!(for_csharp("\u{1F600}"), "\\U0001f600");
+        // U+10000 → first supplementary code point
+        assert_eq!(for_csharp("\u{10000}"), "\\U00010000");
+        // U+10FFFD → last valid non-noncharacter
+        assert_eq!(for_csharp("\u{10FFFD}"), "\\U0010fffd");
+    }
+
+    #[test]
+    fn supplementary_plane_in_mixed_input() {
+        assert_eq!(for_csharp("a\u{1F600}b"), "a\\U0001f600b");
+        assert_eq!(for_csharp("\u{1F600}\u{1F601}"), "\\U0001f600\\U0001f601");
+        assert_eq!(for_csharp("\n\u{1F600}"), "\\n\\U0001f600");
+    }
+
+    #[test]
+    fn noncharacters() {
+        assert_eq!(for_csharp("\u{FDD0}"), " ");
+        assert_eq!(for_csharp("\u{FFFE}"), " ");
+    }
+
+    #[test]
+    fn mixed_xss_payload() {
+        // C# encoder does not encode < / > — they are not special
+        // in C# string literals
+        assert_eq!(
+            for_csharp("<script>alert(\"xss\")</script>"),
+            "<script>alert(\\\"xss\\\")</script>"
+        );
+    }
+
+    // -- comprehensive C0 control coverage --
+
+    #[test]
+    fn all_c0_controls() {
+        // named escapes
+        assert_eq!(for_csharp("\x00"), "\\0");
+        assert_eq!(for_csharp("\x07"), "\\a");
+        assert_eq!(for_csharp("\x08"), "\\b");
+        assert_eq!(for_csharp("\x09"), "\\t");
+        assert_eq!(for_csharp("\x0A"), "\\n");
+        assert_eq!(for_csharp("\x0B"), "\\v");
+        assert_eq!(for_csharp("\x0C"), "\\f");
+        assert_eq!(for_csharp("\x0D"), "\\r");
+
+        // remaining C0 controls use \u00HH
+        let unicode_controls: &[(u8, &str)] = &[
+            (0x01, "\\u0001"),
+            (0x02, "\\u0002"),
+            (0x03, "\\u0003"),
+            (0x04, "\\u0004"),
+            (0x05, "\\u0005"),
+            (0x06, "\\u0006"),
+            (0x0E, "\\u000e"),
+            (0x0F, "\\u000f"),
+            (0x10, "\\u0010"),
+            (0x11, "\\u0011"),
+            (0x12, "\\u0012"),
+            (0x13, "\\u0013"),
+            (0x14, "\\u0014"),
+            (0x15, "\\u0015"),
+            (0x16, "\\u0016"),
+            (0x17, "\\u0017"),
+            (0x18, "\\u0018"),
+            (0x19, "\\u0019"),
+            (0x1A, "\\u001a"),
+            (0x1B, "\\u001b"),
+            (0x1C, "\\u001c"),
+            (0x1D, "\\u001d"),
+            (0x1E, "\\u001e"),
+            (0x1F, "\\u001f"),
+        ];
+        for &(byte, expected) in unicode_controls {
+            let s = String::from(char::from(byte));
+            assert_eq!(for_csharp(&s), expected, "C0 control 0x{:02x}", byte);
+        }
+
+        // DEL
+        assert_eq!(for_csharp("\x7F"), "\\u007f");
+    }
+
+    // -- writer-matches-string parity --
+
+    #[test]
+    fn writer_matches_string() {
+        let input = "test\x00\"\\\u{1F600}";
+        let mut w = String::new();
+        write_csharp(&mut w, input).unwrap();
+        assert_eq!(for_csharp(input), w);
+    }
+
+    #[test]
+    fn writer_matches_string_all_categories() {
+        let input = "abc\0\x07\x08\t\n\x0B\x0C\r\"\\\x01\x7F\u{1F600}\u{FDD0}";
+        let string_result = for_csharp(input);
+        let mut writer_result = String::new();
+        write_csharp(&mut writer_result, input).unwrap();
+        assert_eq!(string_result, writer_result);
+    }
+}
+
+// ===========================================================================
 // cross-context tests
 // ===========================================================================
 
