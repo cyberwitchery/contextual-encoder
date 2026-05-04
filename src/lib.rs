@@ -154,8 +154,24 @@
 //! write_html(&mut buf, "safe & sound").unwrap();
 //! assert_eq!(buf, "safe &amp; sound");
 //! ```
+//!
+//! # display wrappers
+//!
+//! every `for_*` function also has a corresponding `display_*` function that
+//! returns a zero-allocation [`Display`](std::fmt::Display) wrapper. use these
+//! when embedding encoded output inline in `format!` or `write!`:
+//!
+//! ```
+//! use contextual_encoder::display_html;
+//!
+//! let user_input = "<script>alert('xss')</script>";
+//! // one allocation (the final String), zero intermediate allocations
+//! let safe = format!("<p>{}</p>", display_html(user_input));
+//! assert!(safe.contains("&lt;script&gt;"));
+//! ```
 
 pub mod css;
+pub mod display;
 pub mod go;
 pub mod html;
 pub mod java;
@@ -172,6 +188,17 @@ mod engine;
 
 // convenience re-exports — users can `use contextual_encoder::for_html` directly
 pub use css::{for_css_string, for_css_url, write_css_string, write_css_url};
+pub use display::{
+    display_cdata, display_css_string, display_css_url, display_go_byte_string, display_go_char,
+    display_go_string, display_html, display_html_attribute, display_html_content,
+    display_html_unquoted_attribute, display_java, display_javascript,
+    display_javascript_attribute, display_javascript_block, display_javascript_source,
+    display_js_template, display_json, display_python_bytes, display_python_raw_string,
+    display_python_string, display_ruby_string, display_rust_byte_string, display_rust_char,
+    display_rust_string, display_sql, display_sql_backslash, display_uri_component, display_xml,
+    display_xml11, display_xml11_attribute, display_xml11_content, display_xml_attribute,
+    display_xml_comment, display_xml_content,
+};
 pub use go::{
     for_go_byte_string, for_go_char, for_go_string, write_go_byte_string, write_go_char,
     write_go_string,
