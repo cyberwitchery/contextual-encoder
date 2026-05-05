@@ -1,5 +1,9 @@
 # changelog
 
+## Unreleased
+
+- `display_*` wrappers for all encoding contexts — zero-allocation `fmt::Display` types that delegate to the corresponding `write_*` function, enabling inline formatting via `format!`/`write!` without intermediate `String` allocation
+
 ## [0.3.0] - 2026-04-26
 
 - Ruby string literal encoder: `for_ruby_string` — escapes quotes, hash signs (interpolation prevention), and control characters for safe embedding in double-quoted Ruby strings
