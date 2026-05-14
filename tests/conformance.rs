@@ -2444,6 +2444,227 @@ mod sql {
 }
 
 // ===========================================================================
+// POSIX shell context tests
+// ===========================================================================
+
+mod shell {
+    use super::*;
+
+    // -- for_shell_single_quote: single-quoted shell strings --
+
+    #[test]
+    fn single_quote_escaped() {
+        assert_eq!(for_shell_single_quote("it's"), "it'\\''s");
+        assert_eq!(for_shell_single_quote("'quoted'"), "'\\''quoted'\\''");
+        assert_eq!(for_shell_single_quote("'''"), "'\\'''\\'''\\''");
+        assert_eq!(for_shell_single_quote("'"), "'\\''");
+    }
+
+    #[test]
+    fn single_quote_injection_classic() {
+        // attacker tries: '; rm -rf /; echo '
+        assert_eq!(
+            for_shell_single_quote("'; rm -rf /; echo '"),
+            "'\\''; rm -rf /; echo '\\''",
+        );
+    }
+
+    #[test]
+    fn single_quote_injection_command_substitution() {
+        // these are all literal inside single quotes — no encoding needed
+        assert_eq!(for_shell_single_quote("$(whoami)"), "$(whoami)");
+        assert_eq!(for_shell_single_quote("`id`"), "`id`");
+    }
+
+    #[test]
+    fn single_quote_special_chars_pass_through() {
+        // backslash, dollar, backtick, double quote, exclamation — all literal
+        assert_eq!(for_shell_single_quote(r"a\b"), r"a\b");
+        assert_eq!(for_shell_single_quote("$HOME"), "$HOME");
+        assert_eq!(for_shell_single_quote("`cmd`"), "`cmd`");
+        assert_eq!(for_shell_single_quote(r#"a"b"#), r#"a"b"#);
+        assert_eq!(for_shell_single_quote("!event"), "!event");
+    }
+
+    #[test]
+    fn single_quote_control_chars_pass_through() {
+        assert_eq!(for_shell_single_quote("\t"), "\t");
+        assert_eq!(for_shell_single_quote("\n"), "\n");
+        assert_eq!(for_shell_single_quote("\r"), "\r");
+        assert_eq!(for_shell_single_quote("\x01"), "\x01");
+        assert_eq!(for_shell_single_quote("\x7F"), "\x7F");
+    }
+
+    #[test]
+    fn single_quote_nul_removed() {
+        assert_eq!(for_shell_single_quote("before\x00after"), "beforeafter");
+        assert_eq!(for_shell_single_quote("\x00"), "");
+        assert_eq!(for_shell_single_quote("\x00\x00\x00"), "");
+        assert_eq!(for_shell_single_quote("a\x00b\x00c"), "abc");
+    }
+
+    #[test]
+    fn single_quote_nonchars_replaced() {
+        assert_eq!(for_shell_single_quote("\u{FDD0}"), " ");
+        assert_eq!(for_shell_single_quote("\u{FDEF}"), " ");
+        assert_eq!(for_shell_single_quote("\u{FFFE}"), " ");
+        assert_eq!(for_shell_single_quote("\u{FFFF}"), " ");
+        assert_eq!(for_shell_single_quote("\u{1FFFE}"), " ");
+        assert_eq!(for_shell_single_quote("\u{10FFFF}"), " ");
+    }
+
+    #[test]
+    fn single_quote_unicode_passthrough() {
+        assert_eq!(for_shell_single_quote("café"), "café");
+        assert_eq!(for_shell_single_quote("日本語"), "日本語");
+        assert_eq!(for_shell_single_quote("😀"), "😀");
+        assert_eq!(for_shell_single_quote("\u{10000}"), "\u{10000}");
+    }
+
+    #[test]
+    fn single_quote_mixed_unicode_and_quotes() {
+        assert_eq!(for_shell_single_quote("café's best"), "café'\\''s best",);
+    }
+
+    #[test]
+    fn single_quote_empty_string() {
+        assert_eq!(for_shell_single_quote(""), "");
+    }
+
+    #[test]
+    fn single_quote_long_safe_string() {
+        let s = "a".repeat(10000);
+        assert_eq!(for_shell_single_quote(&s), s);
+    }
+
+    #[test]
+    fn single_quote_writer_matches_string() {
+        let input = "test\x00'escape'' café\u{FDD0}$HOME`cmd`\\back";
+        let mut w = String::new();
+        write_shell_single_quote(&mut w, input).unwrap();
+        assert_eq!(for_shell_single_quote(input), w);
+    }
+
+    // -- for_shell_double_quote: double-quoted shell strings --
+
+    #[test]
+    fn double_quote_escapes_all_specials() {
+        assert_eq!(for_shell_double_quote(r#"""#), "\\\"");
+        assert_eq!(for_shell_double_quote("$"), "\\$");
+        assert_eq!(for_shell_double_quote("`"), "\\`");
+        assert_eq!(for_shell_double_quote(r"\"), "\\\\");
+        assert_eq!(for_shell_double_quote("!"), "\\!");
+    }
+
+    #[test]
+    fn double_quote_injection_variable_expansion() {
+        assert_eq!(for_shell_double_quote("$HOME"), "\\$HOME");
+        assert_eq!(for_shell_double_quote("${USER}"), "\\${USER}");
+        assert_eq!(for_shell_double_quote("$((1+1))"), "\\$((1+1))");
+    }
+
+    #[test]
+    fn double_quote_injection_command_substitution() {
+        assert_eq!(for_shell_double_quote("$(whoami)"), "\\$(whoami)");
+        assert_eq!(for_shell_double_quote("`id`"), "\\`id\\`");
+    }
+
+    #[test]
+    fn double_quote_injection_classic() {
+        // attacker tries: "; rm -rf /; echo "
+        assert_eq!(
+            for_shell_double_quote("\"; rm -rf /; echo \""),
+            "\\\"; rm -rf /; echo \\\"",
+        );
+    }
+
+    #[test]
+    fn double_quote_injection_via_backslash() {
+        // attacker tries \" to escape the closing quote — both get escaped
+        assert_eq!(for_shell_double_quote("\\\""), "\\\\\\\"");
+    }
+
+    #[test]
+    fn double_quote_single_quote_passes_through() {
+        // single quotes are not special inside double quotes
+        assert_eq!(for_shell_double_quote("it's"), "it's");
+        assert_eq!(for_shell_double_quote("'"), "'");
+    }
+
+    #[test]
+    fn double_quote_control_chars_pass_through() {
+        assert_eq!(for_shell_double_quote("\t"), "\t");
+        assert_eq!(for_shell_double_quote("\n"), "\n");
+        assert_eq!(for_shell_double_quote("\r"), "\r");
+        assert_eq!(for_shell_double_quote("\x01"), "\x01");
+        assert_eq!(for_shell_double_quote("\x7F"), "\x7F");
+    }
+
+    #[test]
+    fn double_quote_nul_removed() {
+        assert_eq!(for_shell_double_quote("before\x00after"), "beforeafter");
+        assert_eq!(for_shell_double_quote("\x00"), "");
+        assert_eq!(for_shell_double_quote("\x00\x00\x00"), "");
+        assert_eq!(for_shell_double_quote("a\x00b\x00c"), "abc");
+    }
+
+    #[test]
+    fn double_quote_nonchars_replaced() {
+        assert_eq!(for_shell_double_quote("\u{FDD0}"), " ");
+        assert_eq!(for_shell_double_quote("\u{FDEF}"), " ");
+        assert_eq!(for_shell_double_quote("\u{FFFE}"), " ");
+        assert_eq!(for_shell_double_quote("\u{FFFF}"), " ");
+        assert_eq!(for_shell_double_quote("\u{1FFFE}"), " ");
+        assert_eq!(for_shell_double_quote("\u{10FFFF}"), " ");
+    }
+
+    #[test]
+    fn double_quote_unicode_passthrough() {
+        assert_eq!(for_shell_double_quote("café"), "café");
+        assert_eq!(for_shell_double_quote("日本語"), "日本語");
+        assert_eq!(for_shell_double_quote("😀"), "😀");
+        assert_eq!(for_shell_double_quote("\u{10000}"), "\u{10000}");
+    }
+
+    #[test]
+    fn double_quote_empty_string() {
+        assert_eq!(for_shell_double_quote(""), "");
+    }
+
+    #[test]
+    fn double_quote_long_safe_string() {
+        let s = "a".repeat(10000);
+        assert_eq!(for_shell_double_quote(&s), s);
+    }
+
+    #[test]
+    fn double_quote_writer_matches_string() {
+        let input = "test\x00\"escape\\$HOME`cmd`!event café\u{FDD0}";
+        let mut w = String::new();
+        write_shell_double_quote(&mut w, input).unwrap();
+        assert_eq!(for_shell_double_quote(input), w);
+    }
+
+    // -- single vs double quote context comparison --
+
+    #[test]
+    fn contexts_differ_on_special_chars() {
+        // single quote only escapes '
+        assert_eq!(for_shell_single_quote("$HOME"), "$HOME");
+        // double quote escapes $ but not '
+        assert_eq!(for_shell_double_quote("$HOME"), "\\$HOME");
+        assert_eq!(for_shell_double_quote("it's"), "it's");
+    }
+
+    #[test]
+    fn safe_string_unchanged_in_both_contexts() {
+        let safe = "hello world 123 /usr/bin/env";
+        assert_eq!(for_shell_single_quote(safe), safe);
+        assert_eq!(for_shell_double_quote(safe), safe);
+    }
+}
+
+// ===========================================================================
 // cross-context tests
 // ===========================================================================
 
@@ -2507,6 +2728,14 @@ mod cross_context {
         let mut sql_bs_w = String::new();
         write_sql_backslash(&mut sql_bs_w, input).unwrap();
         assert_eq!(for_sql_backslash(input), sql_bs_w);
+
+        let mut shell_sq_w = String::new();
+        write_shell_single_quote(&mut shell_sq_w, input).unwrap();
+        assert_eq!(for_shell_single_quote(input), shell_sq_w);
+
+        let mut shell_dq_w = String::new();
+        write_shell_double_quote(&mut shell_dq_w, input).unwrap();
+        assert_eq!(for_shell_double_quote(input), shell_dq_w);
     }
 
     #[test]
@@ -2521,6 +2750,9 @@ mod cross_context {
         // safe in SQL (no quotes, NUL, or non-characters)
         assert_eq!(for_sql(safe), safe);
         assert_eq!(for_sql_backslash(safe), safe);
+        // safe in shell (no quotes, dollar, backtick, etc.)
+        assert_eq!(for_shell_single_quote(safe), safe);
+        assert_eq!(for_shell_double_quote(safe), safe);
         // NOT safe in URI (space is encoded)
         assert_ne!(for_uri_component(safe), safe);
     }

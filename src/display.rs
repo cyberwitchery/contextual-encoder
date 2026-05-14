@@ -24,7 +24,7 @@
 
 use std::fmt;
 
-use crate::{css, go, html, java, javascript, json, python, ruby, rust, sql, uri, xml};
+use crate::{css, go, html, java, javascript, json, python, ruby, rust, shell, sql, uri, xml};
 
 macro_rules! display_fn {
     (
@@ -232,6 +232,20 @@ display_fn! {
     display_python_raw_string => python::write_python_raw_string
 }
 
+// -- shell --
+
+display_fn! {
+    /// zero-allocation display wrapper for
+    /// [`for_shell_single_quote`](crate::for_shell_single_quote).
+    display_shell_single_quote => shell::write_shell_single_quote
+}
+
+display_fn! {
+    /// zero-allocation display wrapper for
+    /// [`for_shell_double_quote`](crate::for_shell_double_quote).
+    display_shell_double_quote => shell::write_shell_double_quote
+}
+
 // -- sql --
 
 display_fn! {
@@ -386,6 +400,18 @@ mod tests {
         python_raw_string,
         display_python_raw_string,
         crate::for_python_raw_string
+    );
+
+    // shell
+    display_matches_for!(
+        shell_single_quote,
+        display_shell_single_quote,
+        crate::for_shell_single_quote
+    );
+    display_matches_for!(
+        shell_double_quote,
+        display_shell_double_quote,
+        crate::for_shell_double_quote
     );
 
     // sql

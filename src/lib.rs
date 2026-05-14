@@ -95,6 +95,8 @@
 //!
 //! | function | safe for |
 //! |----------|----------|
+//! | [`for_shell_single_quote`] | POSIX shell single-quoted strings (`'...'`) |
+//! | [`for_shell_double_quote`] | POSIX shell double-quoted strings (`"..."`) |
 //! | [`for_json`] | JSON string values |
 //! | [`for_java`] | Java string / char literals |
 //! | [`for_go_string`] | Go interpreted string literals (`"..."`) |
@@ -180,6 +182,7 @@ pub mod json;
 pub mod python;
 pub mod ruby;
 pub mod rust;
+pub mod shell;
 pub mod sql;
 pub mod uri;
 pub mod xml;
@@ -195,9 +198,10 @@ pub use display::{
     display_javascript_attribute, display_javascript_block, display_javascript_source,
     display_js_template, display_json, display_python_bytes, display_python_raw_string,
     display_python_string, display_ruby_string, display_rust_byte_string, display_rust_char,
-    display_rust_string, display_sql, display_sql_backslash, display_uri_component, display_xml,
-    display_xml11, display_xml11_attribute, display_xml11_content, display_xml_attribute,
-    display_xml_comment, display_xml_content,
+    display_rust_string, display_shell_double_quote, display_shell_single_quote, display_sql,
+    display_sql_backslash, display_uri_component, display_xml, display_xml11,
+    display_xml11_attribute, display_xml11_content, display_xml_attribute, display_xml_comment,
+    display_xml_content,
 };
 pub use go::{
     for_go_byte_string, for_go_char, for_go_string, write_go_byte_string, write_go_char,
@@ -222,6 +226,10 @@ pub use ruby::{for_ruby_string, write_ruby_string};
 pub use rust::{
     for_rust_byte_string, for_rust_char, for_rust_string, write_rust_byte_string, write_rust_char,
     write_rust_string,
+};
+pub use shell::{
+    for_shell_double_quote, for_shell_single_quote, write_shell_double_quote,
+    write_shell_single_quote,
 };
 pub use sql::{for_sql, for_sql_backslash, write_sql, write_sql_backslash};
 pub use uri::{for_uri_component, write_uri_component};
@@ -269,6 +277,8 @@ mod tests {
         assert_eq!(for_python_bytes(""), "");
         assert_eq!(for_python_raw_string(""), "");
         assert_eq!(for_js_template(""), "");
+        assert_eq!(for_shell_single_quote(""), "");
+        assert_eq!(for_shell_double_quote(""), "");
         assert_eq!(for_sql(""), "");
         assert_eq!(for_sql_backslash(""), "");
     }
@@ -394,6 +404,20 @@ mod tests {
         assert_eq!(for_java("café"), "café");
         assert_eq!(for_java("世界"), "世界");
         assert_eq!(for_java("😀"), "\\ud83d\\ude00");
+    }
+
+    #[test]
+    fn multibyte_utf8_shell_single_quote_passthrough() {
+        assert_eq!(for_shell_single_quote("café"), "café");
+        assert_eq!(for_shell_single_quote("世界"), "世界");
+        assert_eq!(for_shell_single_quote("😀"), "😀");
+    }
+
+    #[test]
+    fn multibyte_utf8_shell_double_quote_passthrough() {
+        assert_eq!(for_shell_double_quote("café"), "café");
+        assert_eq!(for_shell_double_quote("世界"), "世界");
+        assert_eq!(for_shell_double_quote("😀"), "😀");
     }
 
     #[test]

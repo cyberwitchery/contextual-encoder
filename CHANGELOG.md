@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- POSIX shell string encoders: `for_shell_single_quote` (single-quoted `'...'` context) and `for_shell_double_quote` (double-quoted `"..."` context) — prevents shell injection by encoding context-specific metacharacters per POSIX.1-2017 §2.2.2/§2.2.3
+- writer-based and `display_*` variants for all shell encoders
 - `display_*` wrappers for all encoding contexts — zero-allocation `fmt::Display` types that delegate to the corresponding `write_*` function, enabling inline formatting via `format!`/`write!` without intermediate `String` allocation
 
 ## [0.3.0] - 2026-04-26
