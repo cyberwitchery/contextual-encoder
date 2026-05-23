@@ -2525,3 +2525,226 @@ mod cross_context {
         assert_ne!(for_uri_component(safe), safe);
     }
 }
+
+// ===========================================================================
+// display_* conformance tests
+// ===========================================================================
+//
+// every display_* wrapper must produce identical output to its corresponding
+// for_* function. these tests verify that contract across the full set of
+// test vectors used throughout this conformance suite.
+
+mod display_conformance {
+    use super::*;
+
+    /// test vectors drawn from every context module in this file.
+    /// covers: XSS payloads, HTML entities, control characters (C0, C1, DEL),
+    /// unicode (BMP, supplementary plane, CJK, emoji), noncharacters,
+    /// line separators, boundary conditions, and context-specific edge cases
+    /// (JS template interpolation, CSS expressions, SQL injection, Ruby
+    /// interpolation, backslash sequences, URI reserved chars).
+    const VECTORS: &[&str] = &[
+        // -- boundary conditions --
+        "",
+        "a",
+        "hello world",
+        // -- HTML/XML payloads --
+        "<script>alert('xss')</script>",
+        "<img src=x onerror=\"alert(1)\">",
+        "Hello, <world> & \"friends\"!",
+        "<café>",
+        "<>&\"'",
+        "&<>\"'/=`",
+        // -- entity sequences --
+        "&",
+        "&&",
+        "a&b&c",
+        "&amp;",
+        "&lt;",
+        "&#34;",
+        // -- quotes and delimiters --
+        "a>b",
+        "a\"b",
+        "a'b",
+        "it's",
+        // -- C0 control characters --
+        "\x00",
+        "\x01",
+        "\x07",
+        "\x08",
+        "\t",
+        "\n",
+        "\x0B",
+        "\x0C",
+        "\r",
+        "\x0E",
+        "\x1F",
+        // -- DEL --
+        "\x7F",
+        // -- C1 controls --
+        "\u{0080}",
+        "\u{0085}",
+        "\u{009F}",
+        // -- unicode: BMP --
+        "café",
+        "日本語テスト",
+        "hello 😀 world",
+        // -- unicode: supplementary plane --
+        "\u{10000}",
+        "😀",
+        "\u{1F600}",
+        // -- noncharacters --
+        "\u{FDD0}",
+        "\u{FDEF}",
+        "\u{FFFE}",
+        "\u{FFFF}",
+        "\u{1FFFE}",
+        "\u{10FFFF}",
+        // -- unicode line terminators --
+        "\u{2028}",
+        "\u{2029}",
+        "a\u{2028}b\u{2029}c",
+        // -- JavaScript payloads --
+        "';alert(1);//",
+        "</script><script>alert(1)</script>",
+        "`template`",
+        // -- JS template interpolation --
+        "${alert(1)}",
+        "${a} and ${b}",
+        "$100",
+        "hello `world`",
+        "`Hello ${name}`, welcome\\n",
+        // -- backslash sequences --
+        "\\",
+        "\\\\",
+        "\\n",
+        "a\\b",
+        // -- CSS payloads --
+        "expression(alert(1))",
+        "\"a",
+        // -- URI edge cases --
+        "key=value&other=more",
+        "search term with spaces",
+        "/",
+        "https://example.com",
+        "</script>",
+        // -- SQL injection --
+        "'; DROP TABLE users; --",
+        "' OR '1'='1",
+        // -- Ruby interpolation --
+        "#{name}",
+        "#$PATH",
+        "#@name",
+        // -- mixed categories --
+        "abc\x08\t\n\x0C\r",
+        "\t\n\x0C\r ",
+        "test\x00\"\\\n\u{2028}'café",
+        "abc`${x}\\\t\n\r\x0C\x08\x00\x1F/\u{2028}\u{2029}café😀",
+        "test\x01\x7F<>&\u{0085}",
+        "C:\\Users\\test",
+    ];
+
+    macro_rules! display_conforms {
+        ($name:ident, $display_fn:ident, $for_fn:path) => {
+            #[test]
+            fn $name() {
+                for input in VECTORS {
+                    assert_eq!(
+                        format!("{}", $display_fn(input)),
+                        $for_fn(input),
+                        "display_{} != for_{} for input {:?}",
+                        stringify!($name),
+                        stringify!($name),
+                        input,
+                    );
+                }
+            }
+        };
+    }
+
+    // -- html --
+    display_conforms!(html, display_html, for_html);
+    display_conforms!(html_content, display_html_content, for_html_content);
+    display_conforms!(html_attribute, display_html_attribute, for_html_attribute);
+    display_conforms!(
+        html_unquoted_attribute,
+        display_html_unquoted_attribute,
+        for_html_unquoted_attribute
+    );
+
+    // -- xml --
+    display_conforms!(xml, display_xml, for_xml);
+    display_conforms!(xml_content, display_xml_content, for_xml_content);
+    display_conforms!(xml_attribute, display_xml_attribute, for_xml_attribute);
+    display_conforms!(xml_comment, display_xml_comment, for_xml_comment);
+    display_conforms!(cdata, display_cdata, for_cdata);
+    display_conforms!(xml11, display_xml11, for_xml11);
+    display_conforms!(xml11_content, display_xml11_content, for_xml11_content);
+    display_conforms!(
+        xml11_attribute,
+        display_xml11_attribute,
+        for_xml11_attribute
+    );
+
+    // -- javascript --
+    display_conforms!(javascript, display_javascript, for_javascript);
+    display_conforms!(
+        javascript_attribute,
+        display_javascript_attribute,
+        for_javascript_attribute
+    );
+    display_conforms!(
+        javascript_block,
+        display_javascript_block,
+        for_javascript_block
+    );
+    display_conforms!(
+        javascript_source,
+        display_javascript_source,
+        for_javascript_source
+    );
+    display_conforms!(js_template, display_js_template, for_js_template);
+
+    // -- css --
+    display_conforms!(css_string, display_css_string, for_css_string);
+    display_conforms!(css_url, display_css_url, for_css_url);
+
+    // -- uri --
+    display_conforms!(uri_component, display_uri_component, for_uri_component);
+
+    // -- json --
+    display_conforms!(json, display_json, for_json);
+
+    // -- java --
+    display_conforms!(java, display_java, for_java);
+
+    // -- go --
+    display_conforms!(go_string, display_go_string, for_go_string);
+    display_conforms!(go_char, display_go_char, for_go_char);
+    display_conforms!(go_byte_string, display_go_byte_string, for_go_byte_string);
+
+    // -- rust --
+    display_conforms!(rust_string, display_rust_string, for_rust_string);
+    display_conforms!(rust_char, display_rust_char, for_rust_char);
+    display_conforms!(
+        rust_byte_string,
+        display_rust_byte_string,
+        for_rust_byte_string
+    );
+
+    // -- ruby --
+    display_conforms!(ruby_string, display_ruby_string, for_ruby_string);
+
+    // -- python --
+    display_conforms!(python_string, display_python_string, for_python_string);
+    display_conforms!(python_bytes, display_python_bytes, for_python_bytes);
+    display_conforms!(
+        python_raw_string,
+        display_python_raw_string,
+        for_python_raw_string
+    );
+
+    // -- sql --
+    display_conforms!(sql, display_sql, for_sql);
+    display_conforms!(sql_backslash, display_sql_backslash, for_sql_backslash);
+}
