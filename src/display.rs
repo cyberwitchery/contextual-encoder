@@ -24,7 +24,7 @@
 
 use std::fmt;
 
-use crate::{css, go, html, java, javascript, json, python, ruby, rust, sql, uri, xml};
+use crate::{css, go, html, java, javascript, json, python, ruby, rust, sql, uri, xml, yaml};
 
 macro_rules! display_fn {
     (
@@ -244,6 +244,13 @@ display_fn! {
     display_sql_backslash => sql::write_sql_backslash
 }
 
+// -- yaml --
+
+display_fn! {
+    /// zero-allocation display wrapper for [`for_yaml`](crate::for_yaml).
+    display_yaml => yaml::write_yaml
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -395,6 +402,9 @@ mod tests {
         display_sql_backslash,
         crate::for_sql_backslash
     );
+
+    // yaml
+    display_matches_for!(yaml, display_yaml, crate::for_yaml);
 
     // -- usage pattern tests --
 

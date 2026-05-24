@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- YAML double-quoted scalar encoder: `for_yaml` — escapes control characters, backslashes, double quotes, and YAML-specific unicode (NEL, NBSP, LS, PS) for safe embedding in `"..."` values, preventing type coercion and injection
+- writer-based and display variants for YAML encoder
 - `display_*` wrappers for all encoding contexts — zero-allocation `fmt::Display` types that delegate to the corresponding `write_*` function, enabling inline formatting via `format!`/`write!` without intermediate `String` allocation
 
 ## [0.3.0] - 2026-04-26

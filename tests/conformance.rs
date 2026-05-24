@@ -2444,6 +2444,236 @@ mod sql {
 }
 
 // ===========================================================================
+// YAML context tests
+// ===========================================================================
+
+mod yaml {
+    use super::*;
+
+    // -- structural characters --
+
+    #[test]
+    fn double_quote_escaped() {
+        assert_eq!(for_yaml(r#"""#), r#"\""#);
+        assert_eq!(for_yaml(r#"say "hi""#), r#"say \"hi\""#);
+        assert_eq!(for_yaml(r#"a"b"c"#), r#"a\"b\"c"#);
+    }
+
+    #[test]
+    fn backslash_escaped() {
+        assert_eq!(for_yaml(r"\"), r"\\");
+        assert_eq!(for_yaml(r"\\"), r"\\\\");
+        assert_eq!(for_yaml(r"a\b"), r"a\\b");
+    }
+
+    // -- YAML type coercion values (safe inside double quotes) --
+
+    #[test]
+    fn boolean_values_pass_through() {
+        for v in [
+            "true", "false", "True", "False", "TRUE", "FALSE", "yes", "no", "Yes", "No", "YES",
+            "NO", "on", "off", "On", "Off", "ON", "OFF",
+        ] {
+            assert_eq!(
+                for_yaml(v),
+                v,
+                "boolean-like value should pass through: {v}"
+            );
+        }
+    }
+
+    #[test]
+    fn null_values_pass_through() {
+        assert_eq!(for_yaml("null"), "null");
+        assert_eq!(for_yaml("Null"), "Null");
+        assert_eq!(for_yaml("NULL"), "NULL");
+        assert_eq!(for_yaml("~"), "~");
+    }
+
+    #[test]
+    fn numeric_values_pass_through() {
+        for v in [
+            "123", "0", "-1", "1.5", "0x1a", "0o12", "1e10", ".inf", ".Inf", ".INF", "-.inf",
+            ".nan", ".NaN", ".NAN",
+        ] {
+            assert_eq!(
+                for_yaml(v),
+                v,
+                "numeric-like value should pass through: {v}"
+            );
+        }
+    }
+
+    #[test]
+    fn date_values_pass_through() {
+        assert_eq!(for_yaml("2024-01-01"), "2024-01-01");
+        assert_eq!(for_yaml("2024-01-01T00:00:00Z"), "2024-01-01T00:00:00Z");
+    }
+
+    // -- YAML special characters (safe inside double quotes) --
+
+    #[test]
+    fn flow_indicators_pass_through() {
+        assert_eq!(for_yaml("{key: value}"), "{key: value}");
+        assert_eq!(for_yaml("[1, 2, 3]"), "[1, 2, 3]");
+    }
+
+    #[test]
+    fn block_indicators_pass_through() {
+        assert_eq!(for_yaml("- item"), "- item");
+        assert_eq!(for_yaml("key: value"), "key: value");
+        assert_eq!(for_yaml("? question"), "? question");
+        assert_eq!(for_yaml("|"), "|");
+        assert_eq!(for_yaml(">"), ">");
+    }
+
+    #[test]
+    fn anchor_alias_tag_pass_through() {
+        assert_eq!(for_yaml("&anchor"), "&anchor");
+        assert_eq!(for_yaml("*alias"), "*alias");
+        assert_eq!(for_yaml("!tag"), "!tag");
+    }
+
+    #[test]
+    fn comment_indicator_passes_through() {
+        assert_eq!(for_yaml("value # comment"), "value # comment");
+        assert_eq!(for_yaml("# not a comment"), "# not a comment");
+    }
+
+    // -- C0 control characters --
+
+    #[test]
+    fn named_c0_escapes() {
+        assert_eq!(for_yaml("\x00"), "\\0");
+        assert_eq!(for_yaml("\x07"), "\\a");
+        assert_eq!(for_yaml("\x08"), "\\b");
+        assert_eq!(for_yaml("\t"), "\\t");
+        assert_eq!(for_yaml("\n"), "\\n");
+        assert_eq!(for_yaml("\x0B"), "\\v");
+        assert_eq!(for_yaml("\x0C"), "\\f");
+        assert_eq!(for_yaml("\r"), "\\r");
+        assert_eq!(for_yaml("\x1B"), "\\e");
+    }
+
+    #[test]
+    fn other_c0_hex_escaped() {
+        assert_eq!(for_yaml("\x01"), "\\x01");
+        assert_eq!(for_yaml("\x02"), "\\x02");
+        assert_eq!(for_yaml("\x06"), "\\x06");
+        assert_eq!(for_yaml("\x0E"), "\\x0e");
+        assert_eq!(for_yaml("\x1A"), "\\x1a");
+        assert_eq!(for_yaml("\x1F"), "\\x1f");
+    }
+
+    #[test]
+    fn del_hex_escaped() {
+        assert_eq!(for_yaml("\x7F"), "\\x7f");
+    }
+
+    // -- C1 controls and YAML-specific unicode --
+
+    #[test]
+    fn c1_controls_hex_escaped() {
+        assert_eq!(for_yaml("\u{0080}"), "\\x80");
+        assert_eq!(for_yaml("\u{0081}"), "\\x81");
+        assert_eq!(for_yaml("\u{008F}"), "\\x8f");
+        assert_eq!(for_yaml("\u{009F}"), "\\x9f");
+    }
+
+    #[test]
+    fn nel_uses_named_escape() {
+        // U+0085 NEL has YAML-specific named escape \N
+        assert_eq!(for_yaml("\u{0085}"), "\\N");
+    }
+
+    #[test]
+    fn nbsp_uses_named_escape() {
+        // U+00A0 NBSP has YAML-specific named escape \_
+        assert_eq!(for_yaml("\u{00A0}"), "\\_");
+    }
+
+    #[test]
+    fn line_separator_uses_named_escape() {
+        // U+2028 has YAML-specific named escape \L
+        assert_eq!(for_yaml("\u{2028}"), "\\L");
+    }
+
+    #[test]
+    fn paragraph_separator_uses_named_escape() {
+        // U+2029 has YAML-specific named escape \P
+        assert_eq!(for_yaml("\u{2029}"), "\\P");
+    }
+
+    // -- unicode passthrough --
+
+    #[test]
+    fn unicode_passthrough() {
+        assert_eq!(for_yaml("café"), "café");
+        assert_eq!(for_yaml("日本語"), "日本語");
+        assert_eq!(for_yaml("😀"), "😀");
+        assert_eq!(for_yaml("\u{10000}"), "\u{10000}");
+    }
+
+    // -- injection attempts --
+
+    #[test]
+    fn injection_via_newline() {
+        // attacker tries to inject a new key via embedded newline
+        assert_eq!(
+            for_yaml("innocent\nmalicious_key: evil"),
+            "innocent\\nmalicious_key: evil"
+        );
+    }
+
+    #[test]
+    fn injection_via_quote_breakout() {
+        // attacker tries to break out of double-quoted scalar
+        assert_eq!(
+            for_yaml(r#"value" injected: true"#),
+            r#"value\" injected: true"#
+        );
+    }
+
+    #[test]
+    fn injection_via_backslash_quote() {
+        // attacker tries \" to escape the closing quote
+        assert_eq!(for_yaml("\\\""), "\\\\\\\"");
+    }
+
+    #[test]
+    fn injection_via_multiline_document() {
+        // attacker tries to inject document separator
+        assert_eq!(for_yaml("---\ninjected: true"), "---\\ninjected: true");
+    }
+
+    // -- boundary conditions --
+
+    #[test]
+    fn empty_string() {
+        assert_eq!(for_yaml(""), "");
+    }
+
+    #[test]
+    fn single_safe_char() {
+        assert_eq!(for_yaml("a"), "a");
+    }
+
+    #[test]
+    fn long_safe_string() {
+        let s = "a".repeat(10000);
+        assert_eq!(for_yaml(&s), s);
+    }
+
+    #[test]
+    fn writer_matches_string() {
+        let input = "test\x00\"\\\n\t\u{0085}\u{00A0}\u{2028}\u{2029}café";
+        let mut w = String::new();
+        write_yaml(&mut w, input).unwrap();
+        assert_eq!(for_yaml(input), w);
+    }
+}
+
+// ===========================================================================
 // cross-context tests
 // ===========================================================================
 
@@ -2460,6 +2690,7 @@ mod cross_context {
         let uri = for_uri_component(input);
         let sql = for_sql(input);
         let sql_bs = for_sql_backslash(input);
+        let yaml = for_yaml(input);
 
         // each produces different output appropriate for its context
         assert_ne!(html, js);
@@ -2478,6 +2709,8 @@ mod cross_context {
         assert!(sql.contains("''"));
         // sql_backslash uses backslash escapes for quotes
         assert!(sql_bs.contains("\\'"));
+        // yaml escapes double quotes
+        assert!(yaml.contains("\\\""));
     }
 
     #[test]
@@ -2507,6 +2740,10 @@ mod cross_context {
         let mut sql_bs_w = String::new();
         write_sql_backslash(&mut sql_bs_w, input).unwrap();
         assert_eq!(for_sql_backslash(input), sql_bs_w);
+
+        let mut yaml_w = String::new();
+        write_yaml(&mut yaml_w, input).unwrap();
+        assert_eq!(for_yaml(input), yaml_w);
     }
 
     #[test]
@@ -2521,6 +2758,8 @@ mod cross_context {
         // safe in SQL (no quotes, NUL, or non-characters)
         assert_eq!(for_sql(safe), safe);
         assert_eq!(for_sql_backslash(safe), safe);
+        // safe in YAML (no quotes, backslash, or control chars)
+        assert_eq!(for_yaml(safe), safe);
         // NOT safe in URI (space is encoded)
         assert_ne!(for_uri_component(safe), safe);
     }
@@ -2747,4 +2986,7 @@ mod display_conformance {
     // -- sql --
     display_conforms!(sql, display_sql, for_sql);
     display_conforms!(sql_backslash, display_sql_backslash, for_sql_backslash);
+
+    // -- yaml --
+    display_conforms!(yaml, display_yaml, for_yaml);
 }
