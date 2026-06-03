@@ -72,6 +72,7 @@ stop and ask before:
 - adding an encoder for an unsafe context (raw tag names, attribute names, event handlers)
 
 do not:
+- propose or implement new encoding languages/contexts — the supported language set is intentional and closed; do not add new ones without an explicit request from the maintainer
 - use `unwrap()` or `expect()` in library code (ok in tests and examples)
 - swallow errors with `let _ =` without explaining why
 - write macros when functions suffice
