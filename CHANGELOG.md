@@ -1,6 +1,6 @@
 # changelog
 
-## Unreleased
+## [0.4.0] - 2026-06-08
 
 - `display_*` wrappers for all encoding contexts — zero-allocation `fmt::Display` types that delegate to the corresponding `write_*` function, enabling inline formatting via `format!`/`write!` without intermediate `String` allocation
 
