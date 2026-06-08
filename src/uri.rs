@@ -35,7 +35,10 @@ use std::fmt;
 /// assert_eq!(for_uri_component("café"), "caf%C3%A9");
 /// ```
 pub fn for_uri_component(input: &str) -> String {
-    let mut out = String::with_capacity(input.len());
+    let bytes = input.as_bytes();
+    let unreserved = bytes.iter().filter(|b| is_unreserved(**b)).count();
+    let capacity = unreserved + 3 * (bytes.len() - unreserved);
+    let mut out = String::with_capacity(capacity);
     write_uri_component(&mut out, input).expect("writing to string cannot fail");
     out
 }
@@ -44,12 +47,24 @@ pub fn for_uri_component(input: &str) -> String {
 ///
 /// see [`for_uri_component`] for encoding rules.
 pub fn write_uri_component<W: fmt::Write>(out: &mut W, input: &str) -> fmt::Result {
-    for byte in input.as_bytes() {
-        if is_unreserved(*byte) {
-            out.write_char(*byte as char)?;
-        } else {
+    let bytes = input.as_bytes();
+    let mut last_written = 0;
+
+    for (i, &byte) in bytes.iter().enumerate() {
+        if !is_unreserved(byte) {
+            // flush the preceding run of unreserved (ASCII) bytes
+            if last_written < i {
+                // safe: unreserved chars are all ASCII, so this slice is valid UTF-8
+                out.write_str(&input[last_written..i])?;
+            }
             write!(out, "%{:02X}", byte)?;
+            last_written = i + 1;
         }
+    }
+
+    // flush any trailing safe run
+    if last_written < bytes.len() {
+        out.write_str(&input[last_written..])?;
     }
     Ok(())
 }
