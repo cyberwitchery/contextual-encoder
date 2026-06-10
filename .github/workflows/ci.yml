@@ -91,7 +91,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - uses: cyberwitchery/unsafe-budget@v0.4.0
+      - uses: cyberwitchery/unsafe-budget@v0.4.1
         with:
           mode: check
 
