@@ -87,6 +87,7 @@
 //! | function | safe for |
 //! |----------|----------|
 //! | [`for_uri_component`] | URI components (query params, path segments) |
+//! | [`for_uri_path`] | URI paths (preserves `/` separators) |
 //!
 //! ## additional literal contexts
 //!
@@ -195,9 +196,9 @@ pub use display::{
     display_javascript_attribute, display_javascript_block, display_javascript_source,
     display_js_template, display_json, display_python_bytes, display_python_raw_string,
     display_python_string, display_ruby_string, display_rust_byte_string, display_rust_char,
-    display_rust_string, display_sql, display_sql_backslash, display_uri_component, display_xml,
-    display_xml11, display_xml11_attribute, display_xml11_content, display_xml_attribute,
-    display_xml_comment, display_xml_content,
+    display_rust_string, display_sql, display_sql_backslash, display_uri_component,
+    display_uri_path, display_xml, display_xml11, display_xml11_attribute, display_xml11_content,
+    display_xml_attribute, display_xml_comment, display_xml_content,
 };
 pub use go::{
     for_go_byte_string, for_go_char, for_go_string, write_go_byte_string, write_go_char,
@@ -224,7 +225,7 @@ pub use rust::{
     write_rust_string,
 };
 pub use sql::{for_sql, for_sql_backslash, write_sql, write_sql_backslash};
-pub use uri::{for_uri_component, write_uri_component};
+pub use uri::{for_uri_component, for_uri_path, write_uri_component, write_uri_path};
 pub use xml::{
     for_cdata, for_xml, for_xml11, for_xml11_attribute, for_xml11_content, for_xml_attribute,
     for_xml_comment, for_xml_content, write_cdata, write_xml, write_xml11, write_xml11_attribute,
@@ -248,6 +249,7 @@ mod tests {
         assert_eq!(for_css_string(""), "");
         assert_eq!(for_css_url(""), "");
         assert_eq!(for_uri_component(""), "");
+        assert_eq!(for_uri_path(""), "");
         assert_eq!(for_xml(""), "");
         assert_eq!(for_xml_content(""), "");
         assert_eq!(for_xml_attribute(""), "");
@@ -290,6 +292,10 @@ mod tests {
         buf.clear();
         write_uri_component(&mut buf, "").unwrap();
         assert_eq!(buf, "");
+
+        buf.clear();
+        write_uri_path(&mut buf, "").unwrap();
+        assert_eq!(buf, "");
     }
 
     // two-byte: é (U+00E9), ñ (U+00F1)
@@ -324,6 +330,14 @@ mod tests {
         assert_eq!(for_uri_component("世"), "%E4%B8%96");
         assert_eq!(for_uri_component("😀"), "%F0%9F%98%80");
         assert_eq!(for_uri_component("café"), "caf%C3%A9");
+    }
+
+    #[test]
+    fn multibyte_utf8_uri_path() {
+        assert_eq!(for_uri_path("é"), "%C3%A9");
+        assert_eq!(for_uri_path("世"), "%E4%B8%96");
+        assert_eq!(for_uri_path("😀"), "%F0%9F%98%80");
+        assert_eq!(for_uri_path("/café"), "/caf%C3%A9");
     }
 
     #[test]
