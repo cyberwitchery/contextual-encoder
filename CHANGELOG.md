@@ -1,5 +1,9 @@
 # changelog
 
+## Unreleased
+
+- URI path encoder: `for_uri_path`, `write_uri_path`, `display_uri_path` — percent-encodes untrusted input for URI paths per RFC 3986 section 3.3, preserving forward-slash separators while encoding all non-unreserved characters
+
 ## [0.4.0] - 2026-06-08
 
 - `display_*` wrappers for all encoding contexts — zero-allocation `fmt::Display` types that delegate to the corresponding `write_*` function, enabling inline formatting via `format!`/`write!` without intermediate `String` allocation

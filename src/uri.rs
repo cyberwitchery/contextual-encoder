@@ -1,12 +1,11 @@
-//! URI component encoder.
+//! URI component and path encoders.
 //!
-//! provides percent-encoding for URI components per RFC 3986.
+//! provides percent-encoding for URI components and paths per RFC 3986.
 //!
 //! # security notes
 //!
-//! - this encoder is for **URI components** (query parameters, path segments,
-//!   fragment identifiers), not entire URLs.
-//! - it **cannot** make an untrusted full URL safe. a `javascript:` URL will
+//! - these encoders are for **URI components and paths**, not entire URLs.
+//! - they **cannot** make an untrusted full URL safe. a `javascript:` URL will
 //!   be percent-encoded but still execute. always validate the URL scheme and
 //!   structure separately before embedding untrusted URLs.
 //! - the output is safe for direct embedding in HTML, CSS, and javascript
@@ -55,6 +54,74 @@ pub fn write_uri_component<W: fmt::Write>(out: &mut W, input: &str) -> fmt::Resu
             // flush the preceding run of unreserved (ASCII) bytes
             if last_written < i {
                 // safe: unreserved chars are all ASCII, so this slice is valid UTF-8
+                out.write_str(&input[last_written..i])?;
+            }
+            write!(out, "%{:02X}", byte)?;
+            last_written = i + 1;
+        }
+    }
+
+    // flush any trailing safe run
+    if last_written < bytes.len() {
+        out.write_str(&input[last_written..])?;
+    }
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// for_uri_path
+// ---------------------------------------------------------------------------
+
+/// percent-encodes `input` for safe use as a URI path.
+///
+/// this encoder preserves forward-slash (`/`) separators while encoding each
+/// path segment. only unreserved characters per RFC 3986 and `/` pass through
+/// unencoded: `A-Z`, `a-z`, `0-9`, `-`, `.`, `_`, `~`, `/`. everything else
+/// is encoded as percent-encoded UTF-8 bytes.
+///
+/// use this when you need to encode a full URI path from untrusted input.
+/// for individual path segments or query parameters, use
+/// [`for_uri_component`] instead (which also encodes `/`).
+///
+/// # security notes
+///
+/// - this encoder does **not** normalize `.` or `..` segments. callers must
+///   validate and normalize paths separately to prevent path traversal.
+/// - multiple consecutive slashes are preserved as-is.
+///
+/// # examples
+///
+/// ```
+/// use contextual_encoder::for_uri_path;
+///
+/// assert_eq!(for_uri_path("/users/café/profile"), "/users/caf%C3%A9/profile");
+/// assert_eq!(for_uri_path("/a b/c&d"), "/a%20b/c%26d");
+/// assert_eq!(for_uri_path("/safe-text_v2.0/~user"), "/safe-text_v2.0/~user");
+/// assert_eq!(for_uri_path("/path/segment"), "/path/segment");
+/// ```
+pub fn for_uri_path(input: &str) -> String {
+    let bytes = input.as_bytes();
+    let safe = bytes
+        .iter()
+        .filter(|b| is_unreserved(**b) || **b == b'/')
+        .count();
+    let capacity = safe + 3 * (bytes.len() - safe);
+    let mut out = String::with_capacity(capacity);
+    write_uri_path(&mut out, input).expect("writing to string cannot fail");
+    out
+}
+
+/// writes the percent-encoded URI path form of `input` to `out`.
+///
+/// see [`for_uri_path`] for encoding rules.
+pub fn write_uri_path<W: fmt::Write>(out: &mut W, input: &str) -> fmt::Result {
+    let bytes = input.as_bytes();
+    let mut last_written = 0;
+
+    for (i, &byte) in bytes.iter().enumerate() {
+        if !is_unreserved(byte) && byte != b'/' {
+            // flush the preceding run of safe bytes
+            if last_written < i {
                 out.write_str(&input[last_written..i])?;
             }
             write!(out, "%{:02X}", byte)?;
@@ -151,5 +218,49 @@ mod tests {
         let mut out = String::new();
         write_uri_component(&mut out, "a b").unwrap();
         assert_eq!(out, "a%20b");
+    }
+
+    // -- uri path --
+
+    #[test]
+    fn uri_path_no_encoding_needed() {
+        assert_eq!(for_uri_path("hello"), "hello");
+        assert_eq!(for_uri_path(""), "");
+        assert_eq!(for_uri_path("-._~"), "-._~");
+    }
+
+    #[test]
+    fn uri_path_preserves_slashes() {
+        assert_eq!(for_uri_path("/a/b/c"), "/a/b/c");
+        assert_eq!(for_uri_path("/"), "/");
+        assert_eq!(for_uri_path("//"), "//");
+        assert_eq!(for_uri_path("a/b"), "a/b");
+    }
+
+    #[test]
+    fn uri_path_encodes_reserved_except_slash() {
+        assert_eq!(for_uri_path("a=b"), "a%3Db");
+        assert_eq!(for_uri_path("a&b"), "a%26b");
+        assert_eq!(for_uri_path("a?b"), "a%3Fb");
+        assert_eq!(for_uri_path("a#b"), "a%23b");
+    }
+
+    #[test]
+    fn uri_path_encodes_space() {
+        assert_eq!(for_uri_path("/a b/c d"), "/a%20b/c%20d");
+    }
+
+    #[test]
+    fn uri_path_encodes_multibyte() {
+        assert_eq!(for_uri_path("/café"), "/caf%C3%A9");
+        assert_eq!(for_uri_path("/世界"), "/%E4%B8%96%E7%95%8C");
+        assert_eq!(for_uri_path("/😀"), "/%F0%9F%98%80");
+    }
+
+    #[test]
+    fn uri_path_writer_variant() {
+        let mut out = String::new();
+        write_uri_path(&mut out, "/a b/c").unwrap();
+        assert_eq!(out, "/a%20b/c");
     }
 }

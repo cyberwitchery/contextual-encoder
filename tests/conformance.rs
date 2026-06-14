@@ -812,6 +812,297 @@ mod uri {
 }
 
 // ===========================================================================
+// URI path tests (RFC 3986 section 3.3)
+// ===========================================================================
+
+mod uri_path {
+    use super::*;
+
+    // -- slash preservation --
+
+    #[test]
+    fn single_slash_preserved() {
+        assert_eq!(for_uri_path("/"), "/");
+    }
+
+    #[test]
+    fn path_separators_preserved() {
+        assert_eq!(for_uri_path("/a/b/c"), "/a/b/c");
+    }
+
+    #[test]
+    fn leading_slash_preserved() {
+        assert_eq!(for_uri_path("/root"), "/root");
+    }
+
+    #[test]
+    fn trailing_slash_preserved() {
+        assert_eq!(for_uri_path("/dir/"), "/dir/");
+    }
+
+    #[test]
+    fn multiple_consecutive_slashes_preserved() {
+        assert_eq!(for_uri_path("//double"), "//double");
+        assert_eq!(for_uri_path("///triple"), "///triple");
+        assert_eq!(for_uri_path("/a//b///c"), "/a//b///c");
+    }
+
+    #[test]
+    fn relative_path_no_leading_slash() {
+        assert_eq!(for_uri_path("a/b/c"), "a/b/c");
+    }
+
+    #[test]
+    fn slash_only_paths() {
+        assert_eq!(for_uri_path("/"), "/");
+        assert_eq!(for_uri_path("//"), "//");
+        assert_eq!(for_uri_path("///"), "///");
+    }
+
+    // -- unreserved characters pass through --
+
+    #[test]
+    fn unreserved_chars_pass_through() {
+        let unreserved = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~";
+        assert_eq!(for_uri_path(unreserved), unreserved);
+    }
+
+    #[test]
+    fn unreserved_in_segments() {
+        assert_eq!(
+            for_uri_path("/safe-text_v2.0/~user"),
+            "/safe-text_v2.0/~user"
+        );
+    }
+
+    // -- reserved characters (except /) are encoded --
+
+    #[test]
+    fn gen_delims_encoded_except_slash() {
+        assert_eq!(for_uri_path(":"), "%3A");
+        assert_eq!(for_uri_path("?"), "%3F");
+        assert_eq!(for_uri_path("#"), "%23");
+        assert_eq!(for_uri_path("["), "%5B");
+        assert_eq!(for_uri_path("]"), "%5D");
+        assert_eq!(for_uri_path("@"), "%40");
+    }
+
+    #[test]
+    fn sub_delims_encoded() {
+        assert_eq!(for_uri_path("!"), "%21");
+        assert_eq!(for_uri_path("$"), "%24");
+        assert_eq!(for_uri_path("&"), "%26");
+        assert_eq!(for_uri_path("'"), "%27");
+        assert_eq!(for_uri_path("("), "%28");
+        assert_eq!(for_uri_path(")"), "%29");
+        assert_eq!(for_uri_path("*"), "%2A");
+        assert_eq!(for_uri_path("+"), "%2B");
+        assert_eq!(for_uri_path(","), "%2C");
+        assert_eq!(for_uri_path(";"), "%3B");
+        assert_eq!(for_uri_path("="), "%3D");
+    }
+
+    #[test]
+    fn space_encoded() {
+        assert_eq!(for_uri_path(" "), "%20");
+        assert_eq!(for_uri_path("/a b/c d"), "/a%20b/c%20d");
+    }
+
+    // -- slash vs uri_component comparison --
+
+    #[test]
+    fn slash_distinguishes_path_from_component() {
+        // for_uri_component encodes slashes
+        assert_eq!(for_uri_component("/a/b"), "%2Fa%2Fb");
+        // for_uri_path preserves them
+        assert_eq!(for_uri_path("/a/b"), "/a/b");
+    }
+
+    #[test]
+    fn identical_for_no_slash_input() {
+        // without slashes, the encoders produce identical output
+        let inputs = ["hello", "a=b", "café", "", "safe-text_v2.0"];
+        for input in inputs {
+            assert_eq!(
+                for_uri_path(input),
+                for_uri_component(input),
+                "mismatch for {:?}",
+                input
+            );
+        }
+    }
+
+    // -- HTML-significant characters encoded (XSS safety) --
+
+    #[test]
+    fn html_significant_chars_encoded() {
+        assert_eq!(for_uri_path("<"), "%3C");
+        assert_eq!(for_uri_path(">"), "%3E");
+        assert_eq!(for_uri_path("\""), "%22");
+        assert_eq!(
+            for_uri_path("/<script>/alert('xss')"),
+            "/%3Cscript%3E/alert%28%27xss%27%29"
+        );
+    }
+
+    // -- UTF-8 multi-byte encoding --
+
+    #[test]
+    fn two_byte_utf8() {
+        // U+00A0 NBSP → C2 A0
+        assert_eq!(for_uri_path("\u{00A0}"), "%C2%A0");
+        // U+00E9 é → C3 A9
+        assert_eq!(for_uri_path("é"), "%C3%A9");
+        // U+07FF → DF BF
+        assert_eq!(for_uri_path("\u{07FF}"), "%DF%BF");
+    }
+
+    #[test]
+    fn three_byte_utf8() {
+        // U+0800 → E0 A0 80
+        assert_eq!(for_uri_path("\u{0800}"), "%E0%A0%80");
+        // U+4E16 世 → E4 B8 96
+        assert_eq!(for_uri_path("世"), "%E4%B8%96");
+        // U+FFFD → EF BF BD
+        assert_eq!(for_uri_path("\u{FFFD}"), "%EF%BF%BD");
+    }
+
+    #[test]
+    fn four_byte_utf8() {
+        // U+10000 → F0 90 80 80
+        assert_eq!(for_uri_path("\u{10000}"), "%F0%90%80%80");
+        // U+1F600 😀 → F0 9F 98 80
+        assert_eq!(for_uri_path("😀"), "%F0%9F%98%80");
+    }
+
+    #[test]
+    fn multibyte_in_path_segments() {
+        assert_eq!(for_uri_path("/café/世界"), "/caf%C3%A9/%E4%B8%96%E7%95%8C");
+        assert_eq!(
+            for_uri_path("/ファイル/名前"),
+            "/%E3%83%95%E3%82%A1%E3%82%A4%E3%83%AB/%E5%90%8D%E5%89%8D"
+        );
+    }
+
+    // -- control characters --
+
+    #[test]
+    fn control_chars_encoded() {
+        assert_eq!(for_uri_path("\x00"), "%00");
+        assert_eq!(for_uri_path("\x01"), "%01");
+        assert_eq!(for_uri_path("\x1F"), "%1F");
+        assert_eq!(for_uri_path("\x7F"), "%7F");
+    }
+
+    // -- dot segments (not normalized — that's the caller's job) --
+
+    #[test]
+    fn dot_segments_preserved() {
+        assert_eq!(for_uri_path("/a/./b"), "/a/./b");
+        assert_eq!(for_uri_path("/a/../b"), "/a/../b");
+        assert_eq!(for_uri_path("/../../../etc/passwd"), "/../../../etc/passwd");
+    }
+
+    // -- practical paths --
+
+    #[test]
+    fn api_style_path() {
+        assert_eq!(
+            for_uri_path("/api/v2/users/john doe/profile"),
+            "/api/v2/users/john%20doe/profile"
+        );
+    }
+
+    #[test]
+    fn file_path_with_special_chars() {
+        assert_eq!(
+            for_uri_path("/files/report (final).pdf"),
+            "/files/report%20%28final%29.pdf"
+        );
+    }
+
+    #[test]
+    fn path_with_query_like_content() {
+        // query delimiters are encoded because this is a path encoder,
+        // not a full URL encoder
+        assert_eq!(
+            for_uri_path("/search?q=foo&page=1"),
+            "/search%3Fq%3Dfoo%26page%3D1"
+        );
+    }
+
+    #[test]
+    fn path_with_fragment_like_content() {
+        assert_eq!(for_uri_path("/page#section"), "/page%23section");
+    }
+
+    // -- boundary conditions --
+
+    #[test]
+    fn empty_string() {
+        assert_eq!(for_uri_path(""), "");
+    }
+
+    #[test]
+    fn single_unreserved() {
+        assert_eq!(for_uri_path("a"), "a");
+    }
+
+    #[test]
+    fn all_percent_encoded() {
+        assert_eq!(for_uri_path("   "), "%20%20%20");
+    }
+
+    #[test]
+    fn slash_adjacent_to_encoded() {
+        assert_eq!(for_uri_path("/ /"), "/%20/");
+        assert_eq!(for_uri_path("/é/"), "/%C3%A9/");
+    }
+
+    // -- writer variant --
+
+    #[test]
+    fn writer_matches_string() {
+        let inputs = [
+            "",
+            "/a/b/c",
+            "/café/世界",
+            "/a b/c&d",
+            "/<script>",
+            "/../etc/passwd",
+            "/safe-text_v2.0/~user",
+        ];
+        for input in inputs {
+            let mut w = String::new();
+            write_uri_path(&mut w, input).unwrap();
+            assert_eq!(for_uri_path(input), w, "writer mismatch for {:?}", input);
+        }
+    }
+
+    // -- display wrapper --
+
+    #[test]
+    fn display_matches_for_fn() {
+        let inputs = ["", "/a/b/c", "/café/世界", "/a b/c&d", "/<script>"];
+        for input in inputs {
+            assert_eq!(
+                format!("{}", display_uri_path(input)),
+                for_uri_path(input),
+                "display mismatch for {:?}",
+                input
+            );
+        }
+    }
+
+    #[test]
+    fn display_inline_formatting() {
+        let path = "/users/café/profile";
+        let result = format!("https://example.com{}", display_uri_path(path));
+        assert_eq!(result, "https://example.com/users/caf%C3%A9/profile");
+    }
+}
+
+// ===========================================================================
 // XML context tests
 // ===========================================================================
 
