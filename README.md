@@ -6,8 +6,8 @@ inspired by the [OWASP Java Encoder](https://owasp.org/owasp-java-encoder/).
 ## disclaimer
 
 contextual-encoder is an independent Rust crate for contextual output encoding.
-Its API and security model are inspired by the OWASP Java Encoder.
-This project is not affiliated with, endorsed by, or maintained by the OWASP
+its API and security model are inspired by the OWASP Java Encoder.
+this project is not affiliated with, endorsed by, or maintained by the OWASP
 Foundation.
 
 ## what this is

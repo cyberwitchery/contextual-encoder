@@ -1,6 +1,6 @@
 # changelog
 
-## Unreleased
+## unreleased
 
 - URI path encoder: `for_uri_path`, `write_uri_path`, `display_uri_path` — percent-encodes untrusted input for URI paths per RFC 3986 section 3.3, preserving forward-slash separators while encoding all non-unreserved characters
 
