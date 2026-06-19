@@ -1,6 +1,6 @@
 # changelog
 
-## unreleased
+## [0.5.0] - 2026-06-19
 
 - **breaking:** removed the Java, Go, Ruby, and Python literal encoders (`for_java`, `for_go_string`, `for_go_char`, `for_go_byte_string`, `for_ruby_string`, `for_python_string`, `for_python_bytes`, `for_python_raw_string`, and their `write_*`/`display_*` variants) — out of scope for this crate
 - URI path encoder: `for_uri_path`, `write_uri_path`, `display_uri_path` — percent-encodes untrusted input for URI paths per RFC 3986 section 3.3, preserving forward-slash separators while encoding all non-unreserved characters
