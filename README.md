@@ -17,6 +17,19 @@ embedding in web output contexts (HTML, JavaScript, CSS, URI, XML) and
 source literal contexts (Rust). each function targets a specific
 output context so that only the necessary characters are encoded.
 
+## quick start
+
+```rust
+use contextual_encoder::for_html;
+
+// pick the encoder for the sink; the input is always untrusted
+let safe = for_html("<script>alert('xss')</script>");
+assert_eq!(safe, "&lt;script&gt;alert(&#39;xss&#39;)&lt;/script&gt;");
+```
+
+see [examples](#examples) for the other contexts, or run
+`cargo run --example contexts`.
+
 ## what this is not
 
 - **not a sanitizer.** encoding `<script>` as `&lt;script&gt;` makes it
