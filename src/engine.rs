@@ -46,29 +46,6 @@ pub(crate) fn write_utf8_hex_bytes<W: fmt::Write>(out: &mut W, c: char) -> fmt::
     Ok(())
 }
 
-/// attempts to write a C0 named escape for the given character.
-///
-/// covers the escapes shared by go and python: BEL (`\a`), BS (`\b`),
-/// TAB (`\t`), LF (`\n`), VT (`\v`), FF (`\f`), CR (`\r`), and
-/// backslash (`\\`).
-///
-/// returns `Some(Ok(()))` if an escape was written, `Some(Err(..))` on
-/// write error, or `None` if the character has no named escape.
-pub(crate) fn write_c0_named_escape<W: fmt::Write>(out: &mut W, c: char) -> Option<fmt::Result> {
-    let s = match c {
-        '\x07' => "\\a",
-        '\x08' => "\\b",
-        '\t' => "\\t",
-        '\n' => "\\n",
-        '\x0B' => "\\v",
-        '\x0C' => "\\f",
-        '\r' => "\\r",
-        '\\' => "\\\\",
-        _ => return None,
-    };
-    Some(out.write_str(s))
-}
-
 /// returns true if the character is invalid in XML 1.0 output and should be
 /// replaced (with space or dash depending on context).
 ///
@@ -109,18 +86,17 @@ pub(crate) fn write_rust_named_escape<W: fmt::Write>(out: &mut W, c: char) -> Op
 
 /// returns true if a character needs encoding in a byte string context.
 ///
-/// this predicate is shared by go and rust byte string encoders. it flags
+/// this predicate is used by the rust byte string encoder. it flags
 /// C0 controls, DEL, quotes, backslashes, and all non-ASCII characters.
 pub(crate) fn needs_byte_string_encoding(c: char) -> bool {
     matches!(c, '\x00'..='\x1F' | '\x7F' | '"' | '\\') || !c.is_ascii()
 }
 
-/// shared byte string encoder used by go and rust byte string contexts.
+/// byte string encoder used by the rust byte string context.
 ///
 /// handles quote escaping (`"` → `\"`), non-ASCII → hex byte encoding,
 /// and C0/DEL → `\xHH` fallback. named escapes are language-specific
-/// and provided by the caller (e.g. `write_c0_named_escape` for go,
-/// `write_rust_named_escape` for rust).
+/// and provided by the caller (e.g. `write_rust_named_escape` for rust).
 pub(crate) fn write_byte_string_encoded<W, N>(out: &mut W, c: char, named_escape: N) -> fmt::Result
 where
     W: fmt::Write,

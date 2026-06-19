@@ -5,8 +5,7 @@
 //! this crate provides context-aware encoding functions inspired by the
 //! [OWASP Java Encoder](https://owasp.org/owasp-java-encoder/). each function
 //! encodes input for safe embedding in a specific output context — web contexts
-//! (HTML, XML, JavaScript, CSS, URI) and source literal contexts (Java, Rust,
-//! Ruby).
+//! (HTML, XML, JavaScript, CSS, URI) and source literal contexts (Rust).
 //!
 //! **disclaimer:** contextual-encoder is an independent Rust crate. its API and security model
 //! are inspired by the OWASP Java Encoder, but this project is not affiliated with,
@@ -97,17 +96,9 @@
 //! | function | safe for |
 //! |----------|----------|
 //! | [`for_json`] | JSON string values |
-//! | [`for_java`] | Java string / char literals |
-//! | [`for_go_string`] | Go interpreted string literals (`"..."`) |
-//! | [`for_go_char`] | Go rune literals (`'...'`) |
-//! | [`for_go_byte_string`] | Go byte-explicit string literals (`[]byte("...")`) |
 //! | [`for_rust_string`] | Rust string literals (`"..."`) |
 //! | [`for_rust_char`] | Rust char literals (`'...'`) |
 //! | [`for_rust_byte_string`] | Rust byte string literals (`b"..."`) |
-//! | [`for_ruby_string`] | Ruby double-quoted string literals (`"..."`) |
-//! | [`for_python_string`] | Python string literals (`"..."` or `'...'`) |
-//! | [`for_python_bytes`] | Python bytes literals (`b"..."` or `b'...'`) |
-//! | [`for_python_raw_string`] | Python raw string literals (`r"..."` or `r'...'`) |
 //! | [`for_sql`] | Standard SQL string literals (`'...'`) |
 //! | [`for_sql_backslash`] | MySQL/MariaDB string literals with backslash escaping (`'...'`) |
 //!
@@ -173,13 +164,9 @@
 
 pub mod css;
 pub mod display;
-pub mod go;
 pub mod html;
-pub mod java;
 pub mod javascript;
 pub mod json;
-pub mod python;
-pub mod ruby;
 pub mod rust;
 pub mod sql;
 pub mod uri;
@@ -190,36 +177,24 @@ mod engine;
 // convenience re-exports — users can `use contextual_encoder::for_html` directly
 pub use css::{for_css_string, for_css_url, write_css_string, write_css_url};
 pub use display::{
-    display_cdata, display_css_string, display_css_url, display_go_byte_string, display_go_char,
-    display_go_string, display_html, display_html_attribute, display_html_content,
-    display_html_unquoted_attribute, display_java, display_javascript,
+    display_cdata, display_css_string, display_css_url, display_html, display_html_attribute,
+    display_html_content, display_html_unquoted_attribute, display_javascript,
     display_javascript_attribute, display_javascript_block, display_javascript_source,
-    display_js_template, display_json, display_python_bytes, display_python_raw_string,
-    display_python_string, display_ruby_string, display_rust_byte_string, display_rust_char,
+    display_js_template, display_json, display_rust_byte_string, display_rust_char,
     display_rust_string, display_sql, display_sql_backslash, display_uri_component,
     display_uri_path, display_xml, display_xml11, display_xml11_attribute, display_xml11_content,
     display_xml_attribute, display_xml_comment, display_xml_content,
-};
-pub use go::{
-    for_go_byte_string, for_go_char, for_go_string, write_go_byte_string, write_go_char,
-    write_go_string,
 };
 pub use html::{
     for_html, for_html_attribute, for_html_content, for_html_unquoted_attribute, write_html,
     write_html_attribute, write_html_content, write_html_unquoted_attribute,
 };
-pub use java::{for_java, write_java};
 pub use javascript::{
     for_javascript, for_javascript_attribute, for_javascript_block, for_javascript_source,
     for_js_template, write_javascript, write_javascript_attribute, write_javascript_block,
     write_javascript_source, write_js_template,
 };
 pub use json::{for_json, write_json};
-pub use python::{
-    for_python_bytes, for_python_raw_string, for_python_string, write_python_bytes,
-    write_python_raw_string, write_python_string,
-};
-pub use ruby::{for_ruby_string, write_ruby_string};
 pub use rust::{
     for_rust_byte_string, for_rust_char, for_rust_string, write_rust_byte_string, write_rust_char,
     write_rust_string,
@@ -258,18 +233,10 @@ mod tests {
         assert_eq!(for_xml11(""), "");
         assert_eq!(for_xml11_content(""), "");
         assert_eq!(for_xml11_attribute(""), "");
-        assert_eq!(for_java(""), "");
         assert_eq!(for_json(""), "");
-        assert_eq!(for_go_string(""), "");
-        assert_eq!(for_go_char(""), "");
-        assert_eq!(for_go_byte_string(""), "");
         assert_eq!(for_rust_string(""), "");
         assert_eq!(for_rust_char(""), "");
         assert_eq!(for_rust_byte_string(""), "");
-        assert_eq!(for_ruby_string(""), "");
-        assert_eq!(for_python_string(""), "");
-        assert_eq!(for_python_bytes(""), "");
-        assert_eq!(for_python_raw_string(""), "");
         assert_eq!(for_js_template(""), "");
         assert_eq!(for_sql(""), "");
         assert_eq!(for_sql_backslash(""), "");
@@ -341,20 +308,6 @@ mod tests {
     }
 
     #[test]
-    fn multibyte_utf8_go_string_passthrough() {
-        assert_eq!(for_go_string("caf\u{00e9}"), "caf\u{00e9}");
-        assert_eq!(for_go_string("\u{4e16}\u{754c}"), "\u{4e16}\u{754c}");
-        assert_eq!(for_go_string("\u{1F600}"), "\u{1F600}");
-    }
-
-    #[test]
-    fn multibyte_utf8_go_byte_string() {
-        assert_eq!(for_go_byte_string("\u{00e9}"), r"\xc3\xa9");
-        assert_eq!(for_go_byte_string("\u{4e16}"), r"\xe4\xb8\x96");
-        assert_eq!(for_go_byte_string("\u{1F600}"), r"\xf0\x9f\x98\x80");
-    }
-
-    #[test]
     fn multibyte_utf8_rust_byte_string() {
         assert_eq!(for_rust_byte_string("é"), r"\xc3\xa9");
         assert_eq!(for_rust_byte_string("世"), r"\xe4\xb8\x96");
@@ -369,45 +322,10 @@ mod tests {
     }
 
     #[test]
-    fn multibyte_utf8_ruby_string_passthrough() {
-        assert_eq!(for_ruby_string("café"), "café");
-        assert_eq!(for_ruby_string("世界"), "世界");
-        assert_eq!(for_ruby_string("😀"), "😀");
-    }
-
-    #[test]
-    fn multibyte_utf8_python_string_passthrough() {
-        assert_eq!(for_python_string("café"), "café");
-        assert_eq!(for_python_string("世界"), "世界");
-        assert_eq!(for_python_string("😀"), "😀");
-    }
-
-    #[test]
-    fn multibyte_utf8_python_bytes() {
-        assert_eq!(for_python_bytes("\u{00e9}"), r"\xc3\xa9");
-        assert_eq!(for_python_bytes("\u{4e16}"), r"\xe4\xb8\x96");
-        assert_eq!(for_python_bytes("\u{1F600}"), r"\xf0\x9f\x98\x80");
-    }
-
-    #[test]
-    fn multibyte_utf8_python_raw_string_passthrough() {
-        assert_eq!(for_python_raw_string("café"), "café");
-        assert_eq!(for_python_raw_string("世界"), "世界");
-        assert_eq!(for_python_raw_string("😀"), "😀");
-    }
-
-    #[test]
     fn multibyte_utf8_json() {
         assert_eq!(for_json("café"), "café");
         assert_eq!(for_json("世界"), "世界");
         assert_eq!(for_json("😀"), "😀");
-    }
-
-    #[test]
-    fn multibyte_utf8_java() {
-        assert_eq!(for_java("café"), "café");
-        assert_eq!(for_java("世界"), "世界");
-        assert_eq!(for_java("😀"), "\\ud83d\\ude00");
     }
 
     #[test]

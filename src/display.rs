@@ -24,7 +24,7 @@
 
 use std::fmt;
 
-use crate::{css, go, html, java, javascript, json, python, ruby, rust, sql, uri, xml};
+use crate::{css, html, javascript, json, rust, sql, uri, xml};
 
 macro_rules! display_fn {
     (
@@ -170,30 +170,6 @@ display_fn! {
     display_json => json::write_json
 }
 
-// -- java --
-
-display_fn! {
-    /// zero-allocation display wrapper for [`for_java`](crate::for_java).
-    display_java => java::write_java
-}
-
-// -- go --
-
-display_fn! {
-    /// zero-allocation display wrapper for [`for_go_string`](crate::for_go_string).
-    display_go_string => go::write_go_string
-}
-
-display_fn! {
-    /// zero-allocation display wrapper for [`for_go_char`](crate::for_go_char).
-    display_go_char => go::write_go_char
-}
-
-display_fn! {
-    /// zero-allocation display wrapper for [`for_go_byte_string`](crate::for_go_byte_string).
-    display_go_byte_string => go::write_go_byte_string
-}
-
 // -- rust --
 
 display_fn! {
@@ -210,31 +186,6 @@ display_fn! {
     /// zero-allocation display wrapper for
     /// [`for_rust_byte_string`](crate::for_rust_byte_string).
     display_rust_byte_string => rust::write_rust_byte_string
-}
-
-// -- ruby --
-
-display_fn! {
-    /// zero-allocation display wrapper for [`for_ruby_string`](crate::for_ruby_string).
-    display_ruby_string => ruby::write_ruby_string
-}
-
-// -- python --
-
-display_fn! {
-    /// zero-allocation display wrapper for [`for_python_string`](crate::for_python_string).
-    display_python_string => python::write_python_string
-}
-
-display_fn! {
-    /// zero-allocation display wrapper for [`for_python_bytes`](crate::for_python_bytes).
-    display_python_bytes => python::write_python_bytes
-}
-
-display_fn! {
-    /// zero-allocation display wrapper for
-    /// [`for_python_raw_string`](crate::for_python_raw_string).
-    display_python_raw_string => python::write_python_raw_string
 }
 
 // -- sql --
@@ -357,18 +308,6 @@ mod tests {
     // json
     display_matches_for!(json, display_json, crate::for_json);
 
-    // java
-    display_matches_for!(java, display_java, crate::for_java);
-
-    // go
-    display_matches_for!(go_string, display_go_string, crate::for_go_string);
-    display_matches_for!(go_char, display_go_char, crate::for_go_char);
-    display_matches_for!(
-        go_byte_string,
-        display_go_byte_string,
-        crate::for_go_byte_string
-    );
-
     // rust
     display_matches_for!(rust_string, display_rust_string, crate::for_rust_string);
     display_matches_for!(rust_char, display_rust_char, crate::for_rust_char);
@@ -376,22 +315,6 @@ mod tests {
         rust_byte_string,
         display_rust_byte_string,
         crate::for_rust_byte_string
-    );
-
-    // ruby
-    display_matches_for!(ruby_string, display_ruby_string, crate::for_ruby_string);
-
-    // python
-    display_matches_for!(
-        python_string,
-        display_python_string,
-        crate::for_python_string
-    );
-    display_matches_for!(python_bytes, display_python_bytes, crate::for_python_bytes);
-    display_matches_for!(
-        python_raw_string,
-        display_python_raw_string,
-        crate::for_python_raw_string
     );
 
     // sql

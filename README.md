@@ -14,7 +14,7 @@ Foundation.
 
 a zero-dependency Rust library that encodes untrusted strings for safe
 embedding in web output contexts (HTML, JavaScript, CSS, URI, XML) and
-source literal contexts (Java, Rust). each function targets a specific
+source literal contexts (Rust). each function targets a specific
 output context so that only the necessary characters are encoded.
 
 ## what this is not
@@ -86,11 +86,11 @@ output context so that only the necessary characters are encoded.
 these encoders are not part of the OWASP Java Encoder's scope. they encode
 untrusted strings for safe embedding in source code literals.
 
-#### Java
+#### JSON
 
 | function | safe for | notes |
 |----------|----------|-------|
-| `for_java` | Java string / char literals | octal escapes, surrogate pairs for supplementary plane |
+| `for_json` | JSON string values | `\uHHHH` escapes (no `\xHH`), escapes `/` and U+2028/U+2029 for `<script>` safety |
 
 #### Rust
 
@@ -100,19 +100,12 @@ untrusted strings for safe embedding in source code literals.
 | `for_rust_char` | Rust char literals (`'...'`) | escapes `'` instead of `"` |
 | `for_rust_byte_string` | Rust byte string literals (`b"..."`) | non-ASCII → `\xHH` per UTF-8 byte |
 
-#### Ruby
+#### SQL
 
 | function | safe for | notes |
 |----------|----------|-------|
-| `for_ruby_string` | Ruby double-quoted string literals (`"..."`) | escapes `#` to prevent interpolation, `\e` for ESC, non-ASCII passes through |
-
-#### Python
-
-| function | safe for | notes |
-|----------|----------|-------|
-| `for_python_string` | Python string literals (`"..."` or `'...'`) | escapes both quotes, non-ASCII passes through |
-| `for_python_bytes` | Python bytes literals (`b"..."` or `b'...'`) | non-ASCII → `\xHH` per UTF-8 byte |
-| `for_python_raw_string` | Python raw string literals (`r"..."` or `r'...'`) | replaces quotes/controls with space, handles trailing backslash |
+| `for_sql` | standard SQL string literals (`'...'`) | doubles `'` to `''`, removes NUL; backslash passes through |
+| `for_sql_backslash` | MySQL/MariaDB string literals (`'...'`) | C-style backslash escaping (`\'`, `\\`, `\n`, etc.) |
 
 ## unsupported / dangerous contexts
 
@@ -209,7 +202,7 @@ is for XML comments only — it is **not safe for HTML comments**.
 ## relationship to OWASP Java Encoder
 
 the web output encoders (HTML, JavaScript, CSS, URI, XML) are modeled on
-the OWASP Java Encoder. the Java and Rust literal encoders are additions
+the OWASP Java Encoder. the Rust literal encoders are additions
 specific to this crate.
 
 ### exact matches
