@@ -64,10 +64,6 @@ const JS_SOURCE: JsConfig = JsConfig {
     encode_slash: false,
 };
 
-// ---------------------------------------------------------------------------
-// for_javascript — universal encoder (safe everywhere)
-// ---------------------------------------------------------------------------
-
 /// encodes `input` for safe embedding in a javascript string literal.
 ///
 /// this is the universal javascript encoder — its output is safe in HTML
@@ -118,10 +114,6 @@ pub fn write_javascript<W: fmt::Write>(out: &mut W, input: &str) -> fmt::Result 
     write_js(out, input, &JS_UNIVERSAL)
 }
 
-// ---------------------------------------------------------------------------
-// for_javascript_attribute — optimized for HTML event attributes
-// ---------------------------------------------------------------------------
-
 /// encodes `input` for safe embedding in a javascript string literal inside
 /// an HTML event attribute (e.g., `onclick="..."`).
 ///
@@ -150,10 +142,6 @@ pub fn write_javascript_attribute<W: fmt::Write>(out: &mut W, input: &str) -> fm
     write_js(out, input, &JS_ATTRIBUTE)
 }
 
-// ---------------------------------------------------------------------------
-// for_javascript_block — optimized for <script> blocks
-// ---------------------------------------------------------------------------
-
 /// encodes `input` for safe embedding in a javascript string literal inside
 /// an HTML `<script>` block.
 ///
@@ -180,10 +168,6 @@ pub fn write_javascript_block<W: fmt::Write>(out: &mut W, input: &str) -> fmt::R
     write_js(out, input, &JS_BLOCK)
 }
 
-// ---------------------------------------------------------------------------
-// for_javascript_source — optimized for standalone .js files
-// ---------------------------------------------------------------------------
-
 /// encodes `input` for safe embedding in a javascript string literal in a
 /// standalone .js or JSON file.
 ///
@@ -208,10 +192,6 @@ pub fn for_javascript_source(input: &str) -> String {
 pub fn write_javascript_source<W: fmt::Write>(out: &mut W, input: &str) -> fmt::Result {
     write_js(out, input, &JS_SOURCE)
 }
-
-// ---------------------------------------------------------------------------
-// for_js_template — ES6 template literal encoder
-// ---------------------------------------------------------------------------
 
 /// encodes `input` for safe embedding inside an ES6 template literal
 /// (`` `...` ``).
@@ -291,10 +271,6 @@ fn write_js_template_encoded<W: fmt::Write>(
         c => write!(out, "\\x{:02x}", c as u32),
     }
 }
-
-// ---------------------------------------------------------------------------
-// shared implementation (string literal encoders)
-// ---------------------------------------------------------------------------
 
 fn encode_js(input: &str, config: &JsConfig) -> String {
     let mut out = String::with_capacity(input.len());

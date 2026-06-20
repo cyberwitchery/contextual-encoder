@@ -13,10 +13,6 @@
 
 use std::fmt;
 
-// ---------------------------------------------------------------------------
-// for_uri_component
-// ---------------------------------------------------------------------------
-
 /// percent-encodes `input` for safe use as a URI component.
 ///
 /// only unreserved characters per RFC 3986 pass through unencoded:
@@ -67,10 +63,6 @@ pub fn write_uri_component<W: fmt::Write>(out: &mut W, input: &str) -> fmt::Resu
     }
     Ok(())
 }
-
-// ---------------------------------------------------------------------------
-// for_uri_path
-// ---------------------------------------------------------------------------
 
 /// percent-encodes `input` for safe use as a URI path.
 ///

@@ -29,10 +29,6 @@ use crate::engine::{
     write_rust_named_escape,
 };
 
-// ---------------------------------------------------------------------------
-// for_rust_string — safe for Rust string literals ("...")
-// ---------------------------------------------------------------------------
-
 /// encodes `input` for safe embedding in a rust string literal (`"..."`).
 ///
 /// escapes backslashes, double quotes, and control characters using rust's
@@ -66,10 +62,6 @@ pub fn write_rust_string<W: fmt::Write>(out: &mut W, input: &str) -> fmt::Result
 fn needs_rust_string_encoding(c: char) -> bool {
     matches!(c, '\x00'..='\x1F' | '\x7F' | '"' | '\\') || is_unicode_noncharacter(c as u32)
 }
-
-// ---------------------------------------------------------------------------
-// for_rust_char — safe for Rust char literals ('...')
-// ---------------------------------------------------------------------------
 
 /// encodes `input` for safe embedding in a rust char literal (`'...'`).
 ///
@@ -105,10 +97,6 @@ fn needs_rust_char_encoding(c: char) -> bool {
     matches!(c, '\x00'..='\x1F' | '\x7F' | '\'' | '\\') || is_unicode_noncharacter(c as u32)
 }
 
-// ---------------------------------------------------------------------------
-// shared helper for string and char encoders
-// ---------------------------------------------------------------------------
-
 /// writes the encoded form of a character for rust string or char context.
 /// `quote` is the delimiter being escaped (`"` or `'`).
 fn write_rust_text_encoded<W: fmt::Write>(out: &mut W, c: char, quote: char) -> fmt::Result {
@@ -125,10 +113,6 @@ fn write_rust_text_encoded<W: fmt::Write>(out: &mut W, c: char, quote: char) -> 
         c => write!(out, "\\x{:02x}", c as u32),
     }
 }
-
-// ---------------------------------------------------------------------------
-// for_rust_byte_string — safe for Rust byte string literals (b"...")
-// ---------------------------------------------------------------------------
 
 /// encodes `input` for safe embedding in a rust byte string literal (`b"..."`).
 ///

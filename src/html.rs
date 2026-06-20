@@ -25,10 +25,6 @@ use std::fmt;
 
 use crate::engine::{encode_loop, is_invalid_for_xml, is_unicode_noncharacter};
 
-// ---------------------------------------------------------------------------
-// for_html — safe for text content AND quoted attributes
-// ---------------------------------------------------------------------------
-
 /// encodes `input` for safe embedding in HTML text content and quoted attributes.
 ///
 /// this is the most conservative HTML encoder — it encodes characters needed
@@ -85,10 +81,6 @@ fn write_html_encoded<W: fmt::Write>(out: &mut W, c: char, _next: Option<char>) 
         _ => out.write_char(' '),
     }
 }
-
-// ---------------------------------------------------------------------------
-// for_html_content — safe for text content only (NOT attributes)
-// ---------------------------------------------------------------------------
 
 /// encodes `input` for safe embedding in HTML text content.
 ///
@@ -149,10 +141,6 @@ fn write_html_content_encoded<W: fmt::Write>(
         _ => out.write_char(' '),
     }
 }
-
-// ---------------------------------------------------------------------------
-// for_html_attribute — safe for quoted attributes only
-// ---------------------------------------------------------------------------
 
 /// encodes `input` for safe embedding in a quoted HTML attribute value.
 ///
@@ -222,10 +210,6 @@ fn write_html_attribute_encoded<W: fmt::Write>(
         _ => out.write_char(' '),
     }
 }
-
-// ---------------------------------------------------------------------------
-// for_html_unquoted_attribute — safe for unquoted attribute values
-// ---------------------------------------------------------------------------
 
 /// encodes `input` for safe embedding in an unquoted HTML attribute value.
 ///

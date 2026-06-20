@@ -44,8 +44,6 @@ macro_rules! display_fn {
     };
 }
 
-// -- html --
-
 display_fn! {
     /// zero-allocation display wrapper for [`for_html`](crate::for_html).
     display_html => html::write_html
@@ -66,8 +64,6 @@ display_fn! {
     /// [`for_html_unquoted_attribute`](crate::for_html_unquoted_attribute).
     display_html_unquoted_attribute => html::write_html_unquoted_attribute
 }
-
-// -- xml --
 
 display_fn! {
     /// zero-allocation display wrapper for [`for_xml`](crate::for_xml).
@@ -109,8 +105,6 @@ display_fn! {
     display_xml11_attribute => xml::write_xml11_attribute
 }
 
-// -- javascript --
-
 display_fn! {
     /// zero-allocation display wrapper for [`for_javascript`](crate::for_javascript).
     display_javascript => javascript::write_javascript
@@ -139,8 +133,6 @@ display_fn! {
     display_js_template => javascript::write_js_template
 }
 
-// -- css --
-
 display_fn! {
     /// zero-allocation display wrapper for [`for_css_string`](crate::for_css_string).
     display_css_string => css::write_css_string
@@ -150,8 +142,6 @@ display_fn! {
     /// zero-allocation display wrapper for [`for_css_url`](crate::for_css_url).
     display_css_url => css::write_css_url
 }
-
-// -- uri --
 
 display_fn! {
     /// zero-allocation display wrapper for [`for_uri_component`](crate::for_uri_component).
@@ -163,14 +153,10 @@ display_fn! {
     display_uri_path => uri::write_uri_path
 }
 
-// -- json --
-
 display_fn! {
     /// zero-allocation display wrapper for [`for_json`](crate::for_json).
     display_json => json::write_json
 }
-
-// -- rust --
 
 display_fn! {
     /// zero-allocation display wrapper for [`for_rust_string`](crate::for_rust_string).
@@ -187,8 +173,6 @@ display_fn! {
     /// [`for_rust_byte_string`](crate::for_rust_byte_string).
     display_rust_byte_string => rust::write_rust_byte_string
 }
-
-// -- sql --
 
 display_fn! {
     /// zero-allocation display wrapper for [`for_sql`](crate::for_sql).

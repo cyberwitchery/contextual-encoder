@@ -54,10 +54,6 @@ use std::fmt;
 
 use crate::engine::{encode_loop, is_unicode_noncharacter};
 
-// ---------------------------------------------------------------------------
-// for_sql — safe for standard SQL string literals ('...')
-// ---------------------------------------------------------------------------
-
 /// encodes `input` for safe embedding in a standard SQL string literal
 /// (`'...'`).
 ///
@@ -102,10 +98,6 @@ fn write_sql_encoded<W: fmt::Write>(out: &mut W, c: char, _next: Option<char>) -
         _ => out.write_char(c),
     }
 }
-
-// ---------------------------------------------------------------------------
-// for_sql_backslash — safe for MySQL/MariaDB string literals
-// ---------------------------------------------------------------------------
 
 /// encodes `input` for safe embedding in a MySQL/MariaDB string literal
 /// (`'...'`) when backslash escaping is active (the default).

@@ -22,10 +22,6 @@ use std::fmt;
 
 use crate::engine::{encode_loop, is_unicode_noncharacter};
 
-// ---------------------------------------------------------------------------
-// for_css_string — safe for quoted CSS string values
-// ---------------------------------------------------------------------------
-
 /// encodes `input` for safe embedding in a quoted CSS string value.
 ///
 /// uses CSS hex escape syntax (`\XX`) with shortest hex representation.
@@ -66,10 +62,6 @@ fn needs_css_string_encoding(c: char) -> bool {
     needs_css_common_encoding(c) || matches!(c, '(' | ')')
 }
 
-// ---------------------------------------------------------------------------
-// for_css_url — safe for CSS url() values
-// ---------------------------------------------------------------------------
-
 /// encodes `input` for safe embedding in a CSS `url()` value.
 ///
 /// identical to [`for_css_string`] except parentheses `(` and `)` are
@@ -105,10 +97,6 @@ fn needs_css_url_encoding(c: char) -> bool {
     needs_css_common_encoding(c)
     // parentheses NOT encoded in url context
 }
-
-// ---------------------------------------------------------------------------
-// shared implementation
-// ---------------------------------------------------------------------------
 
 fn needs_css_common_encoding(c: char) -> bool {
     let cp = c as u32;
