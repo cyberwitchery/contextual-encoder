@@ -1,10 +1,13 @@
-//! URI component and path encoders.
+//! URI and form percent-encoders.
 //!
-//! provides percent-encoding for URI components and paths per RFC 3986.
+//! provides percent-encoding for URI components and paths per RFC 3986, and
+//! for form values per the WHATWG URL Standard
+//! (`application/x-www-form-urlencoded`).
 //!
 //! # security notes
 //!
-//! - these encoders are for **URI components and paths**, not entire URLs.
+//! - these encoders are for **URI components, paths, and form values**, not
+//!   entire URLs.
 //! - they **cannot** make an untrusted full URL safe. a `javascript:` URL will
 //!   be percent-encoded but still execute. always validate the URL scheme and
 //!   structure separately before embedding untrusted URLs.
@@ -128,9 +131,90 @@ pub fn write_uri_path<W: fmt::Write>(out: &mut W, input: &str) -> fmt::Result {
     Ok(())
 }
 
+/// percent-encodes `input` for use as an
+/// `application/x-www-form-urlencoded` value.
+///
+/// follows the [WHATWG URL Standard](https://url.spec.whatwg.org/#concept-urlencoded-byte-serializer)
+/// byte serializer: spaces become `+`, the bytes `*`, `-`, `.`, `0-9`,
+/// `A-Z`, `_`, `a-z` pass through unencoded, and everything else is
+/// percent-encoded as UTF-8 bytes.
+///
+/// this encodes a single form **value** (or name). it does not insert `=`
+/// or `&` delimiters — the caller constructs the `key=value&key=value`
+/// structure using already-encoded parts.
+///
+/// # differences from [`for_uri_component`]
+///
+/// | character | `for_uri_component` (RFC 3986) | `for_form_urlencoded` (WHATWG) |
+/// |-----------|-------------------------------|-------------------------------|
+/// | space     | `%20`                         | `+`                           |
+/// | `~`       | passthrough                   | `%7E`                         |
+/// | `*`       | `%2A`                         | passthrough                   |
+///
+/// # examples
+///
+/// ```
+/// use contextual_encoder::for_form_urlencoded;
+///
+/// assert_eq!(for_form_urlencoded("hello world"), "hello+world");
+/// assert_eq!(for_form_urlencoded("a=1&b=2"), "a%3D1%26b%3D2");
+/// assert_eq!(for_form_urlencoded("safe-text_v2.0"), "safe-text_v2.0");
+/// assert_eq!(for_form_urlencoded("café"), "caf%C3%A9");
+/// assert_eq!(for_form_urlencoded("a~b"), "a%7Eb");
+/// assert_eq!(for_form_urlencoded("a*b"), "a*b");
+/// ```
+pub fn for_form_urlencoded(input: &str) -> String {
+    let bytes = input.as_bytes();
+    let pass_through = bytes
+        .iter()
+        .filter(|&&b| is_form_safe(b) || b == b' ')
+        .count();
+    let capacity = pass_through + 3 * (bytes.len() - pass_through);
+    let mut out = String::with_capacity(capacity);
+    write_form_urlencoded(&mut out, input).expect("writing to string cannot fail");
+    out
+}
+
+/// writes the `application/x-www-form-urlencoded` encoded form of `input`
+/// to `out`.
+///
+/// see [`for_form_urlencoded`] for encoding rules.
+pub fn write_form_urlencoded<W: fmt::Write>(out: &mut W, input: &str) -> fmt::Result {
+    let bytes = input.as_bytes();
+    let mut last_written = 0;
+
+    for (i, &byte) in bytes.iter().enumerate() {
+        if byte == b' ' {
+            if last_written < i {
+                out.write_str(&input[last_written..i])?;
+            }
+            out.write_char('+')?;
+            last_written = i + 1;
+        } else if !is_form_safe(byte) {
+            if last_written < i {
+                out.write_str(&input[last_written..i])?;
+            }
+            write!(out, "%{:02X}", byte)?;
+            last_written = i + 1;
+        }
+    }
+
+    if last_written < bytes.len() {
+        out.write_str(&input[last_written..])?;
+    }
+    Ok(())
+}
+
 /// returns true if the byte represents an unreserved character per RFC 3986.
 fn is_unreserved(b: u8) -> bool {
     matches!(b, b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~')
+}
+
+/// returns true if the byte passes through unencoded in
+/// `application/x-www-form-urlencoded` per the WHATWG URL Standard.
+/// space is handled separately (mapped to `+`).
+fn is_form_safe(b: u8) -> bool {
+    matches!(b, b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'*' | b'-' | b'.' | b'_')
 }
 
 #[cfg(test)]
@@ -254,5 +338,71 @@ mod tests {
         let mut out = String::new();
         write_uri_path(&mut out, "/a b/c").unwrap();
         assert_eq!(out, "/a%20b/c");
+    }
+
+    // -- form urlencoded --
+
+    #[test]
+    fn form_no_encoding_needed() {
+        assert_eq!(for_form_urlencoded("hello"), "hello");
+        assert_eq!(for_form_urlencoded(""), "");
+        assert_eq!(for_form_urlencoded("ABCxyz019"), "ABCxyz019");
+        assert_eq!(for_form_urlencoded("-._*"), "-._*");
+    }
+
+    #[test]
+    fn form_space_becomes_plus() {
+        assert_eq!(for_form_urlencoded("a b"), "a+b");
+        assert_eq!(for_form_urlencoded("   "), "+++");
+    }
+
+    #[test]
+    fn form_tilde_encoded() {
+        assert_eq!(for_form_urlencoded("a~b"), "a%7Eb");
+    }
+
+    #[test]
+    fn form_asterisk_safe() {
+        assert_eq!(for_form_urlencoded("a*b"), "a*b");
+    }
+
+    #[test]
+    fn form_encodes_reserved_chars() {
+        assert_eq!(for_form_urlencoded("a=b"), "a%3Db");
+        assert_eq!(for_form_urlencoded("a&b"), "a%26b");
+        assert_eq!(for_form_urlencoded("a+b"), "a%2Bb");
+        assert_eq!(for_form_urlencoded("a?b"), "a%3Fb");
+        assert_eq!(for_form_urlencoded("a#b"), "a%23b");
+        assert_eq!(for_form_urlencoded("a/b"), "a%2Fb");
+    }
+
+    #[test]
+    fn form_encodes_multibyte() {
+        assert_eq!(for_form_urlencoded("é"), "%C3%A9");
+        assert_eq!(for_form_urlencoded("世"), "%E4%B8%96");
+        assert_eq!(for_form_urlencoded("😀"), "%F0%9F%98%80");
+        assert_eq!(for_form_urlencoded("café"), "caf%C3%A9");
+    }
+
+    #[test]
+    fn form_encodes_control_chars() {
+        assert_eq!(for_form_urlencoded("\x00"), "%00");
+        assert_eq!(for_form_urlencoded("\x1F"), "%1F");
+        assert_eq!(for_form_urlencoded("\x7F"), "%7F");
+    }
+
+    #[test]
+    fn form_mixed() {
+        assert_eq!(
+            for_form_urlencoded("key=hello world&foo=bar"),
+            "key%3Dhello+world%26foo%3Dbar"
+        );
+    }
+
+    #[test]
+    fn form_writer_variant() {
+        let mut out = String::new();
+        write_form_urlencoded(&mut out, "a b").unwrap();
+        assert_eq!(out, "a+b");
     }
 }

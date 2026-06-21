@@ -154,6 +154,12 @@ display_fn! {
 }
 
 display_fn! {
+    /// zero-allocation display wrapper for
+    /// [`for_form_urlencoded`](crate::for_form_urlencoded).
+    display_form_urlencoded => uri::write_form_urlencoded
+}
+
+display_fn! {
     /// zero-allocation display wrapper for [`for_json`](crate::for_json).
     display_json => json::write_json
 }
@@ -288,6 +294,11 @@ mod tests {
         crate::for_uri_component
     );
     display_matches_for!(uri_path, display_uri_path, crate::for_uri_path);
+    display_matches_for!(
+        form_urlencoded,
+        display_form_urlencoded,
+        crate::for_form_urlencoded
+    );
 
     // json
     display_matches_for!(json, display_json, crate::for_json);

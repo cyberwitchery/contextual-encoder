@@ -87,6 +87,7 @@
 //! |----------|----------|
 //! | [`for_uri_component`] | URI components (query params, path segments) |
 //! | [`for_uri_path`] | URI paths (preserves `/` separators) |
+//! | [`for_form_urlencoded`] | `application/x-www-form-urlencoded` values |
 //!
 //! ## additional literal contexts
 //!
@@ -177,13 +178,13 @@ mod engine;
 // convenience re-exports — users can `use contextual_encoder::for_html` directly
 pub use css::{for_css_string, for_css_url, write_css_string, write_css_url};
 pub use display::{
-    display_cdata, display_css_string, display_css_url, display_html, display_html_attribute,
-    display_html_content, display_html_unquoted_attribute, display_javascript,
-    display_javascript_attribute, display_javascript_block, display_javascript_source,
-    display_js_template, display_json, display_rust_byte_string, display_rust_char,
-    display_rust_string, display_sql, display_sql_backslash, display_uri_component,
-    display_uri_path, display_xml, display_xml11, display_xml11_attribute, display_xml11_content,
-    display_xml_attribute, display_xml_comment, display_xml_content,
+    display_cdata, display_css_string, display_css_url, display_form_urlencoded, display_html,
+    display_html_attribute, display_html_content, display_html_unquoted_attribute,
+    display_javascript, display_javascript_attribute, display_javascript_block,
+    display_javascript_source, display_js_template, display_json, display_rust_byte_string,
+    display_rust_char, display_rust_string, display_sql, display_sql_backslash,
+    display_uri_component, display_uri_path, display_xml, display_xml11, display_xml11_attribute,
+    display_xml11_content, display_xml_attribute, display_xml_comment, display_xml_content,
 };
 pub use html::{
     for_html, for_html_attribute, for_html_content, for_html_unquoted_attribute, write_html,
@@ -200,7 +201,10 @@ pub use rust::{
     write_rust_string,
 };
 pub use sql::{for_sql, for_sql_backslash, write_sql, write_sql_backslash};
-pub use uri::{for_uri_component, for_uri_path, write_uri_component, write_uri_path};
+pub use uri::{
+    for_form_urlencoded, for_uri_component, for_uri_path, write_form_urlencoded,
+    write_uri_component, write_uri_path,
+};
 pub use xml::{
     for_cdata, for_xml, for_xml11, for_xml11_attribute, for_xml11_content, for_xml_attribute,
     for_xml_comment, for_xml_content, write_cdata, write_xml, write_xml11, write_xml11_attribute,
@@ -240,6 +244,7 @@ mod tests {
         assert_eq!(for_js_template(""), "");
         assert_eq!(for_sql(""), "");
         assert_eq!(for_sql_backslash(""), "");
+        assert_eq!(for_form_urlencoded(""), "");
     }
 
     #[test]
@@ -262,6 +267,10 @@ mod tests {
 
         buf.clear();
         write_uri_path(&mut buf, "").unwrap();
+        assert_eq!(buf, "");
+
+        buf.clear();
+        write_form_urlencoded(&mut buf, "").unwrap();
         assert_eq!(buf, "");
     }
 
@@ -305,6 +314,14 @@ mod tests {
         assert_eq!(for_uri_path("世"), "%E4%B8%96");
         assert_eq!(for_uri_path("😀"), "%F0%9F%98%80");
         assert_eq!(for_uri_path("/café"), "/caf%C3%A9");
+    }
+
+    #[test]
+    fn multibyte_utf8_form_urlencoded() {
+        assert_eq!(for_form_urlencoded("é"), "%C3%A9");
+        assert_eq!(for_form_urlencoded("世"), "%E4%B8%96");
+        assert_eq!(for_form_urlencoded("😀"), "%F0%9F%98%80");
+        assert_eq!(for_form_urlencoded("café"), "caf%C3%A9");
     }
 
     #[test]
