@@ -7,11 +7,12 @@
 // from the inside out.
 
 use contextual_encoder::{
-    for_cdata, for_css_string, for_css_url, for_html, for_html_attribute, for_html_content,
-    for_html_unquoted_attribute, for_javascript, for_javascript_attribute, for_javascript_block,
-    for_javascript_source, for_js_template, for_json, for_rust_byte_string, for_rust_char,
-    for_rust_string, for_sql, for_sql_backslash, for_uri_component, for_xml, for_xml11,
-    for_xml11_attribute, for_xml11_content, for_xml_attribute, for_xml_comment, for_xml_content,
+    for_cdata, for_css_string, for_css_url, for_form_urlencoded, for_html, for_html_attribute,
+    for_html_content, for_html_unquoted_attribute, for_javascript, for_javascript_attribute,
+    for_javascript_block, for_javascript_source, for_js_template, for_json, for_rust_byte_string,
+    for_rust_char, for_rust_string, for_sql, for_sql_backslash, for_uri_component, for_xml,
+    for_xml11, for_xml11_attribute, for_xml11_content, for_xml_attribute, for_xml_comment,
+    for_xml_content,
 };
 
 fn main() {
@@ -90,6 +91,12 @@ fn main() {
     println!(
         "  for_uri_component:            {}",
         for_uri_component(input)
+    );
+
+    // form-urlencoded value (WHATWG) — space→+, different safe set from RFC 3986
+    println!(
+        "  for_form_urlencoded:          {}",
+        for_form_urlencoded(input)
     );
     println!();
 

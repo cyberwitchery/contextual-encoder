@@ -1,5 +1,9 @@
 # changelog
 
+## Unreleased
+
+- form-urlencoded encoder: `for_form_urlencoded`, `write_form_urlencoded`, `display_form_urlencoded` — percent-encodes values per the WHATWG URL Standard `application/x-www-form-urlencoded` byte serializer (space → `+`, `*-._` and alphanumerics pass through, everything else percent-encoded)
+
 ## [0.5.0] - 2026-06-19
 
 - **breaking:** removed the Java, Go, Ruby, and Python literal encoders (`for_java`, `for_go_string`, `for_go_char`, `for_go_byte_string`, `for_ruby_string`, `for_python_string`, `for_python_bytes`, `for_python_raw_string`, and their `write_*`/`display_*` variants) — out of scope for this crate

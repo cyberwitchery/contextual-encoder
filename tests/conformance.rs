@@ -1103,6 +1103,256 @@ mod uri_path {
 }
 
 // ===========================================================================
+// form-urlencoded tests (WHATWG URL Standard)
+// ===========================================================================
+
+mod form_urlencoded {
+    use super::*;
+
+    // -- safe characters pass through --
+
+    #[test]
+    fn alphanumerics_pass_through() {
+        let alpha = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+        assert_eq!(for_form_urlencoded(alpha), alpha);
+    }
+
+    #[test]
+    fn safe_punctuation_passes_through() {
+        assert_eq!(for_form_urlencoded("*"), "*");
+        assert_eq!(for_form_urlencoded("-"), "-");
+        assert_eq!(for_form_urlencoded("."), ".");
+        assert_eq!(for_form_urlencoded("_"), "_");
+        assert_eq!(for_form_urlencoded("-._*"), "-._*");
+    }
+
+    // -- space becomes + --
+
+    #[test]
+    fn space_encoded_as_plus() {
+        assert_eq!(for_form_urlencoded(" "), "+");
+        assert_eq!(for_form_urlencoded("hello world"), "hello+world");
+        assert_eq!(for_form_urlencoded("  "), "++");
+    }
+
+    #[test]
+    fn spaces_among_safe_chars() {
+        assert_eq!(for_form_urlencoded("a b c"), "a+b+c");
+        assert_eq!(for_form_urlencoded(" a "), "+a+");
+    }
+
+    // -- key differences from for_uri_component --
+
+    #[test]
+    fn tilde_is_encoded() {
+        // RFC 3986 treats ~ as unreserved; WHATWG form encoding does not
+        assert_eq!(for_form_urlencoded("~"), "%7E");
+        assert_eq!(for_form_urlencoded("a~b"), "a%7Eb");
+    }
+
+    #[test]
+    fn asterisk_is_safe() {
+        // RFC 3986 treats * as a sub-delimiter (encoded); WHATWG form keeps it
+        assert_eq!(for_form_urlencoded("*"), "*");
+        assert_eq!(for_form_urlencoded("a*b"), "a*b");
+    }
+
+    #[test]
+    fn space_vs_uri_component() {
+        assert_eq!(for_form_urlencoded("a b"), "a+b");
+        assert_eq!(for_uri_component("a b"), "a%20b");
+    }
+
+    #[test]
+    fn tilde_vs_uri_component() {
+        assert_eq!(for_form_urlencoded("~"), "%7E");
+        assert_eq!(for_uri_component("~"), "~");
+    }
+
+    #[test]
+    fn asterisk_vs_uri_component() {
+        assert_eq!(for_form_urlencoded("*"), "*");
+        assert_eq!(for_uri_component("*"), "%2A");
+    }
+
+    // -- reserved characters encoded --
+
+    #[test]
+    fn reserved_chars_encoded() {
+        assert_eq!(for_form_urlencoded(":"), "%3A");
+        assert_eq!(for_form_urlencoded("/"), "%2F");
+        assert_eq!(for_form_urlencoded("?"), "%3F");
+        assert_eq!(for_form_urlencoded("#"), "%23");
+        assert_eq!(for_form_urlencoded("["), "%5B");
+        assert_eq!(for_form_urlencoded("]"), "%5D");
+        assert_eq!(for_form_urlencoded("@"), "%40");
+        assert_eq!(for_form_urlencoded("!"), "%21");
+        assert_eq!(for_form_urlencoded("$"), "%24");
+        assert_eq!(for_form_urlencoded("&"), "%26");
+        assert_eq!(for_form_urlencoded("'"), "%27");
+        assert_eq!(for_form_urlencoded("("), "%28");
+        assert_eq!(for_form_urlencoded(")"), "%29");
+        assert_eq!(for_form_urlencoded("+"), "%2B");
+        assert_eq!(for_form_urlencoded(","), "%2C");
+        assert_eq!(for_form_urlencoded(";"), "%3B");
+        assert_eq!(for_form_urlencoded("="), "%3D");
+    }
+
+    #[test]
+    fn html_significant_chars_encoded() {
+        assert_eq!(for_form_urlencoded("<"), "%3C");
+        assert_eq!(for_form_urlencoded(">"), "%3E");
+        assert_eq!(for_form_urlencoded("\""), "%22");
+    }
+
+    // -- UTF-8 multi-byte encoding --
+
+    #[test]
+    fn two_byte_utf8() {
+        // U+00A0 NBSP → C2 A0
+        assert_eq!(for_form_urlencoded("\u{00A0}"), "%C2%A0");
+        // U+00E9 é → C3 A9
+        assert_eq!(for_form_urlencoded("é"), "%C3%A9");
+        // U+07FF → DF BF
+        assert_eq!(for_form_urlencoded("\u{07FF}"), "%DF%BF");
+    }
+
+    #[test]
+    fn three_byte_utf8() {
+        // U+0800 → E0 A0 80
+        assert_eq!(for_form_urlencoded("\u{0800}"), "%E0%A0%80");
+        // U+4E16 世 → E4 B8 96
+        assert_eq!(for_form_urlencoded("世"), "%E4%B8%96");
+        // U+FFFD → EF BF BD
+        assert_eq!(for_form_urlencoded("\u{FFFD}"), "%EF%BF%BD");
+    }
+
+    #[test]
+    fn four_byte_utf8() {
+        // U+10000 → F0 90 80 80
+        assert_eq!(for_form_urlencoded("\u{10000}"), "%F0%90%80%80");
+        // U+1F600 😀 → F0 9F 98 80
+        assert_eq!(for_form_urlencoded("😀"), "%F0%9F%98%80");
+    }
+
+    // -- control characters --
+
+    #[test]
+    fn control_chars() {
+        assert_eq!(for_form_urlencoded("\x00"), "%00");
+        assert_eq!(for_form_urlencoded("\x01"), "%01");
+        assert_eq!(for_form_urlencoded("\x1F"), "%1F");
+        assert_eq!(for_form_urlencoded("\x7F"), "%7F");
+    }
+
+    // -- practical form encoding cases --
+
+    #[test]
+    fn form_value_with_spaces_and_specials() {
+        assert_eq!(
+            for_form_urlencoded("search term with spaces"),
+            "search+term+with+spaces"
+        );
+    }
+
+    #[test]
+    fn form_key_value_encoding() {
+        // encoding a single value — the caller constructs key=value&key=value
+        assert_eq!(
+            for_form_urlencoded("hello world & goodbye"),
+            "hello+world+%26+goodbye"
+        );
+    }
+
+    #[test]
+    fn unicode_form_value() {
+        assert_eq!(
+            for_form_urlencoded("ファイル"),
+            "%E3%83%95%E3%82%A1%E3%82%A4%E3%83%AB"
+        );
+    }
+
+    #[test]
+    fn mixed_safe_and_encoded() {
+        assert_eq!(
+            for_form_urlencoded("name=John Doe&age=30"),
+            "name%3DJohn+Doe%26age%3D30"
+        );
+    }
+
+    // -- boundary conditions --
+
+    #[test]
+    fn empty_string() {
+        assert_eq!(for_form_urlencoded(""), "");
+    }
+
+    #[test]
+    fn single_safe_char() {
+        assert_eq!(for_form_urlencoded("a"), "a");
+    }
+
+    #[test]
+    fn all_spaces() {
+        assert_eq!(for_form_urlencoded("   "), "+++");
+    }
+
+    #[test]
+    fn all_encoded() {
+        assert_eq!(for_form_urlencoded("!@#"), "%21%40%23");
+    }
+
+    // -- writer variant --
+
+    #[test]
+    fn writer_matches_string() {
+        let inputs = [
+            "",
+            "hello world",
+            "a=1&b=2",
+            "café",
+            "a~b",
+            "a*b",
+            "   ",
+            "<script>",
+            "name=John Doe&age=30",
+        ];
+        for input in inputs {
+            let mut w = String::new();
+            write_form_urlencoded(&mut w, input).unwrap();
+            assert_eq!(
+                for_form_urlencoded(input),
+                w,
+                "writer mismatch for {:?}",
+                input
+            );
+        }
+    }
+
+    // -- display wrapper --
+
+    #[test]
+    fn display_matches_for_fn() {
+        let inputs = ["", "hello world", "café", "a=1&b=2", "a~b", "a*b"];
+        for input in inputs {
+            assert_eq!(
+                format!("{}", display_form_urlencoded(input)),
+                for_form_urlencoded(input),
+                "display mismatch for {:?}",
+                input
+            );
+        }
+    }
+
+    #[test]
+    fn display_inline_formatting() {
+        let value = "hello world";
+        let result = format!("q={}", display_form_urlencoded(value));
+        assert_eq!(result, "q=hello+world");
+    }
+}
+
+// ===========================================================================
 // XML context tests
 // ===========================================================================
 
@@ -1976,6 +2226,10 @@ mod cross_context {
         let mut sql_bs_w = String::new();
         write_sql_backslash(&mut sql_bs_w, input).unwrap();
         assert_eq!(for_sql_backslash(input), sql_bs_w);
+
+        let mut form_w = String::new();
+        write_form_urlencoded(&mut form_w, input).unwrap();
+        assert_eq!(for_form_urlencoded(input), form_w);
     }
 
     #[test]
@@ -1990,8 +2244,9 @@ mod cross_context {
         // safe in SQL (no quotes, NUL, or non-characters)
         assert_eq!(for_sql(safe), safe);
         assert_eq!(for_sql_backslash(safe), safe);
-        // NOT safe in URI (space is encoded)
+        // NOT safe in URI or form (space is encoded)
         assert_ne!(for_uri_component(safe), safe);
+        assert_ne!(for_form_urlencoded(safe), safe);
     }
 }
 
@@ -2176,6 +2431,11 @@ mod display_conformance {
 
     // -- uri --
     display_conforms!(uri_component, display_uri_component, for_uri_component);
+    display_conforms!(
+        form_urlencoded,
+        display_form_urlencoded,
+        for_form_urlencoded
+    );
 
     // -- json --
     display_conforms!(json, display_json, for_json);

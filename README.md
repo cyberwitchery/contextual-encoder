@@ -93,6 +93,8 @@ see [examples](#examples) for the other contexts, or run
 | function | safe for | notes |
 |----------|----------|-------|
 | `for_uri_component` | query params, path segments | RFC 3986 percent-encoding |
+| `for_uri_path` | URI paths (preserves `/`) | RFC 3986 section 3.3 |
+| `for_form_urlencoded` | form field values | WHATWG URL Standard, space → `+` |
 
 ### additional literal contexts
 
