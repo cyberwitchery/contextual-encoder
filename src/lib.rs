@@ -97,6 +97,7 @@
 //! | function | safe for |
 //! |----------|----------|
 //! | [`for_json`] | JSON string values |
+//! | [`for_toml_basic`] | TOML basic string values (`"..."`) |
 //! | [`for_rust_string`] | Rust string literals (`"..."`) |
 //! | [`for_rust_char`] | Rust char literals (`'...'`) |
 //! | [`for_rust_byte_string`] | Rust byte string literals (`b"..."`) |
@@ -170,6 +171,7 @@ pub mod javascript;
 pub mod json;
 pub mod rust;
 pub mod sql;
+pub mod toml;
 pub mod uri;
 pub mod xml;
 
@@ -182,7 +184,7 @@ pub use display::{
     display_html_attribute, display_html_content, display_html_unquoted_attribute,
     display_javascript, display_javascript_attribute, display_javascript_block,
     display_javascript_source, display_js_template, display_json, display_rust_byte_string,
-    display_rust_char, display_rust_string, display_sql, display_sql_backslash,
+    display_rust_char, display_rust_string, display_sql, display_sql_backslash, display_toml_basic,
     display_uri_component, display_uri_path, display_xml, display_xml11, display_xml11_attribute,
     display_xml11_content, display_xml_attribute, display_xml_comment, display_xml_content,
 };
@@ -201,6 +203,7 @@ pub use rust::{
     write_rust_string,
 };
 pub use sql::{for_sql, for_sql_backslash, write_sql, write_sql_backslash};
+pub use toml::{for_toml_basic, write_toml_basic};
 pub use uri::{
     for_form_urlencoded, for_uri_component, for_uri_path, write_form_urlencoded,
     write_uri_component, write_uri_path,
@@ -245,6 +248,7 @@ mod tests {
         assert_eq!(for_sql(""), "");
         assert_eq!(for_sql_backslash(""), "");
         assert_eq!(for_form_urlencoded(""), "");
+        assert_eq!(for_toml_basic(""), "");
     }
 
     #[test]
@@ -343,6 +347,13 @@ mod tests {
         assert_eq!(for_json("café"), "café");
         assert_eq!(for_json("世界"), "世界");
         assert_eq!(for_json("😀"), "😀");
+    }
+
+    #[test]
+    fn multibyte_utf8_toml_basic() {
+        assert_eq!(for_toml_basic("café"), "café");
+        assert_eq!(for_toml_basic("世界"), "世界");
+        assert_eq!(for_toml_basic("😀"), "😀");
     }
 
     #[test]

@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- TOML basic string encoder: `for_toml_basic`, `write_toml_basic`, `display_toml_basic` — escapes control characters, double quotes, and backslashes for safe embedding in TOML basic string values (`"..."`) using TOML v1.0 escape sequences
 - form-urlencoded encoder: `for_form_urlencoded`, `write_form_urlencoded`, `display_form_urlencoded` — percent-encodes values per the WHATWG URL Standard `application/x-www-form-urlencoded` byte serializer (space → `+`, `*-._` and alphanumerics pass through, everything else percent-encoded)
 
 ## [0.5.0] - 2026-06-19

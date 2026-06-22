@@ -24,7 +24,7 @@
 
 use std::fmt;
 
-use crate::{css, html, javascript, json, rust, sql, uri, xml};
+use crate::{css, html, javascript, json, rust, sql, toml, uri, xml};
 
 macro_rules! display_fn {
     (
@@ -181,6 +181,11 @@ display_fn! {
 }
 
 display_fn! {
+    /// zero-allocation display wrapper for [`for_toml_basic`](crate::for_toml_basic).
+    display_toml_basic => toml::write_toml_basic
+}
+
+display_fn! {
     /// zero-allocation display wrapper for [`for_sql`](crate::for_sql).
     display_sql => sql::write_sql
 }
@@ -311,6 +316,9 @@ mod tests {
         display_rust_byte_string,
         crate::for_rust_byte_string
     );
+
+    // toml
+    display_matches_for!(toml_basic, display_toml_basic, crate::for_toml_basic);
 
     // sql
     display_matches_for!(sql, display_sql, crate::for_sql);
