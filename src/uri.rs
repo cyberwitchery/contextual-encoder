@@ -33,10 +33,7 @@ use std::fmt;
 /// assert_eq!(for_uri_component("café"), "caf%C3%A9");
 /// ```
 pub fn for_uri_component(input: &str) -> String {
-    let bytes = input.as_bytes();
-    let unreserved = bytes.iter().filter(|b| is_unreserved(**b)).count();
-    let capacity = unreserved + 3 * (bytes.len() - unreserved);
-    let mut out = String::with_capacity(capacity);
+    let mut out = String::with_capacity(input.len());
     write_uri_component(&mut out, input).expect("writing to string cannot fail");
     out
 }
@@ -95,13 +92,7 @@ pub fn write_uri_component<W: fmt::Write>(out: &mut W, input: &str) -> fmt::Resu
 /// assert_eq!(for_uri_path("/path/segment"), "/path/segment");
 /// ```
 pub fn for_uri_path(input: &str) -> String {
-    let bytes = input.as_bytes();
-    let safe = bytes
-        .iter()
-        .filter(|b| is_unreserved(**b) || **b == b'/')
-        .count();
-    let capacity = safe + 3 * (bytes.len() - safe);
-    let mut out = String::with_capacity(capacity);
+    let mut out = String::with_capacity(input.len());
     write_uri_path(&mut out, input).expect("writing to string cannot fail");
     out
 }
@@ -164,13 +155,7 @@ pub fn write_uri_path<W: fmt::Write>(out: &mut W, input: &str) -> fmt::Result {
 /// assert_eq!(for_form_urlencoded("a*b"), "a*b");
 /// ```
 pub fn for_form_urlencoded(input: &str) -> String {
-    let bytes = input.as_bytes();
-    let pass_through = bytes
-        .iter()
-        .filter(|&&b| is_form_safe(b) || b == b' ')
-        .count();
-    let capacity = pass_through + 3 * (bytes.len() - pass_through);
-    let mut out = String::with_capacity(capacity);
+    let mut out = String::with_capacity(input.len());
     write_form_urlencoded(&mut out, input).expect("writing to string cannot fail");
     out
 }
