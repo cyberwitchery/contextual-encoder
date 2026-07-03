@@ -44,19 +44,23 @@ jobs:
           tool: cargo-cyclonedx
 
       - name: generate sbom
+        env:
+          REF_NAME: ${{ github.ref_name }}
         run: |
           (cd /tmp && cargo cyclonedx --manifest-path "$GITHUB_WORKSPACE/Cargo.toml" \
             --format json \
-            --override-filename "sbom-${{ github.ref_name }}.cdx" \
+            --override-filename "sbom-${REF_NAME}.cdx" \
             --all-features)
 
       - name: collect sbom files
+        env:
+          REF_NAME: ${{ github.ref_name }}
         run: |
           set -euo pipefail
           mkdir -p /tmp/contextual-encoder-sbom
-          find /tmp -maxdepth 1 -type f -name "sbom-${{ github.ref_name }}.cdx.json" \
+          find /tmp -maxdepth 1 -type f -name "sbom-${REF_NAME}.cdx.json" \
             -exec mv {} /tmp/contextual-encoder-sbom/ \;
-          find "$GITHUB_WORKSPACE" -type f -name "sbom-${{ github.ref_name }}.cdx.json" \
+          find "$GITHUB_WORKSPACE" -type f -name "sbom-${REF_NAME}.cdx.json" \
             -exec mv {} /tmp/contextual-encoder-sbom/ \;
 
       - name: upload sbom
