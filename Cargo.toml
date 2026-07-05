@@ -1,6 +1,6 @@
 [package]
 name = "contextual-encoder"
-version = "0.5.0"
+version = "0.6.0"
 edition = "2021"
 rust-version = "1.70"
 authors = ["cyber witchery labs"]
@@ -10,7 +10,7 @@ repository = "https://github.com/cyberwitchery/contextual-encoder"
 readme = "README.md"
 keywords = ["security", "xss", "encoding", "html", "owasp"]
 categories = ["web-programming", "encoding"]
-exclude = [".github/", "AGENTS.md", "deny.toml", "unsafe-budget.lock"]
+exclude = [".github/", "AGENTS.md", "deny.toml", "unsafe-budget.lock", "differential/"]
 
 [lints.rust]
 unsafe_code = "forbid"
