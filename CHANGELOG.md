@@ -1,5 +1,9 @@
 # changelog
 
+## Unreleased
+
+- exhaustive property/invariant test coverage across the full unicode scalar range: round-trip verification for the lossless encoders (URI component/path, form-urlencoded, JSON, JavaScript, Rust byte string) and safety-invariant checks for the lossy encoders (HTML/XML, CSS, CDATA, XML comment, SQL)
+
 ## [0.6.0] - 2026-07-05
 
 - form-urlencoded encoder: `for_form_urlencoded`, `write_form_urlencoded`, `display_form_urlencoded` — percent-encodes values per the WHATWG URL Standard `application/x-www-form-urlencoded` byte serializer (space → `+`, `*-._` and alphanumerics pass through, everything else percent-encoded)
