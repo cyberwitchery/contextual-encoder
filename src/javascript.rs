@@ -308,14 +308,7 @@ fn write_js_encoded<W: fmt::Write>(out: &mut W, c: char, config: &JsConfig) -> f
     }
 }
 
-/// writes the escape shared by the javascript string-literal and template
-/// encoders: the named C0 control escapes (`\b`, `\t`, `\n`, `\x0b`, `\f`,
-/// `\r`), the `\xHH` fallback for the remaining C0 controls, `\` → `\\`, and
-/// the javascript line terminators U+2028/U+2029.
-///
-/// returns `Ok(true)` when `c` was one of those characters and has been
-/// written, `Ok(false)` when `c` is not shared and the caller must handle it
-/// (e.g. quotes, `&`, `/`, backticks, `$`).
+/// writes the C0-control/backslash/line-separator escape shared by both js encoders; returns whether `c` was handled.
 fn write_js_shared_escape<W: fmt::Write>(out: &mut W, c: char) -> Result<bool, fmt::Error> {
     match c {
         '\x08' => out.write_str("\\b")?,
@@ -562,8 +555,7 @@ mod tests {
 
     #[test]
     fn shared_escape_declines_format_specific_chars() {
-        // characters the string-literal / template callers handle themselves
-        // are not shared: the helper reports `false` and writes nothing.
+        // caller-handled chars are not shared: helper reports `false`, writes nothing.
         for c in ['a', '"', '\'', '&', '/', '`', '$', 'é'] {
             let mut out = String::new();
             assert_eq!(write_js_shared_escape(&mut out, c), Ok(false));
