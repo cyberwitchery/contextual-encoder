@@ -42,26 +42,7 @@ pub fn for_uri_component(input: &str) -> String {
 ///
 /// see [`for_uri_component`] for encoding rules.
 pub fn write_uri_component<W: fmt::Write>(out: &mut W, input: &str) -> fmt::Result {
-    let bytes = input.as_bytes();
-    let mut last_written = 0;
-
-    for (i, &byte) in bytes.iter().enumerate() {
-        if !is_unreserved(byte) {
-            // flush the preceding run of unreserved (ASCII) bytes
-            if last_written < i {
-                // safe: unreserved chars are all ASCII, so this slice is valid UTF-8
-                out.write_str(&input[last_written..i])?;
-            }
-            write!(out, "%{:02X}", byte)?;
-            last_written = i + 1;
-        }
-    }
-
-    // flush any trailing safe run
-    if last_written < bytes.len() {
-        out.write_str(&input[last_written..])?;
-    }
-    Ok(())
+    percent_encode(out, input, is_unreserved)
 }
 
 /// percent-encodes `input` for safe use as a URI path.
@@ -101,25 +82,7 @@ pub fn for_uri_path(input: &str) -> String {
 ///
 /// see [`for_uri_path`] for encoding rules.
 pub fn write_uri_path<W: fmt::Write>(out: &mut W, input: &str) -> fmt::Result {
-    let bytes = input.as_bytes();
-    let mut last_written = 0;
-
-    for (i, &byte) in bytes.iter().enumerate() {
-        if !is_unreserved(byte) && byte != b'/' {
-            // flush the preceding run of safe bytes
-            if last_written < i {
-                out.write_str(&input[last_written..i])?;
-            }
-            write!(out, "%{:02X}", byte)?;
-            last_written = i + 1;
-        }
-    }
-
-    // flush any trailing safe run
-    if last_written < bytes.len() {
-        out.write_str(&input[last_written..])?;
-    }
-    Ok(())
+    percent_encode(out, input, |b| is_unreserved(b) || b == b'/')
 }
 
 /// percent-encodes `input` for use as an
@@ -165,17 +128,32 @@ pub fn for_form_urlencoded(input: &str) -> String {
 ///
 /// see [`for_form_urlencoded`] for encoding rules.
 pub fn write_form_urlencoded<W: fmt::Write>(out: &mut W, input: &str) -> fmt::Result {
+    // space maps to '+'; every other byte follows the shared percent-encoder.
+    let mut segments = input.split(' ');
+    percent_encode(out, segments.next().unwrap_or(""), is_form_safe)?;
+    for segment in segments {
+        out.write_char('+')?;
+        percent_encode(out, segment, is_form_safe)?;
+    }
+    Ok(())
+}
+
+/// percent-encodes `input` to `out`, passing bytes for which `keep` returns
+/// true through verbatim and encoding every other byte as `%XX`.
+///
+/// consecutive kept bytes are flushed in a single `write_str`. this batching is
+/// sound because every keep-predicate here admits only ASCII bytes, so a kept
+/// run never splits a multi-byte UTF-8 sequence and each slice is valid UTF-8.
+fn percent_encode<W: fmt::Write>(
+    out: &mut W,
+    input: &str,
+    keep: impl Fn(u8) -> bool,
+) -> fmt::Result {
     let bytes = input.as_bytes();
     let mut last_written = 0;
 
     for (i, &byte) in bytes.iter().enumerate() {
-        if byte == b' ' {
-            if last_written < i {
-                out.write_str(&input[last_written..i])?;
-            }
-            out.write_char('+')?;
-            last_written = i + 1;
-        } else if !is_form_safe(byte) {
+        if !keep(byte) {
             if last_written < i {
                 out.write_str(&input[last_written..i])?;
             }
