@@ -254,21 +254,16 @@ fn write_js_template_encoded<W: fmt::Write>(
     next: Option<char>,
 ) -> fmt::Result {
     match c {
-        '\x08' => out.write_str("\\b"),
-        '\t' => out.write_str("\\t"),
-        '\n' => out.write_str("\\n"),
-        '\x0B' => out.write_str("\\x0b"),
-        '\x0C' => out.write_str("\\f"),
-        '\r' => out.write_str("\\r"),
+        // template-specific characters
         '`' => out.write_str("\\`"),
         '$' if next == Some('{') => out.write_str("\\$"),
         '$' => out.write_char('$'),
         '/' => out.write_str("\\/"),
-        '\\' => out.write_str("\\\\"),
-        '\u{2028}' => out.write_str("\\u2028"),
-        '\u{2029}' => out.write_str("\\u2029"),
-        // other C0 controls
-        c => write!(out, "\\x{:02x}", c as u32),
+        // C0 controls, backslash, and line separators
+        c => {
+            write_js_shared_escape(out, c)?;
+            Ok(())
+        }
     }
 }
 
@@ -298,24 +293,44 @@ fn needs_js_encoding(c: char, config: &JsConfig) -> bool {
 
 fn write_js_encoded<W: fmt::Write>(out: &mut W, c: char, config: &JsConfig) -> fmt::Result {
     match c {
-        '\x08' => out.write_str("\\b"),
-        '\t' => out.write_str("\\t"),
-        '\n' => out.write_str("\\n"),
-        '\x0B' => out.write_str("\\x0b"),
-        '\x0C' => out.write_str("\\f"),
-        '\r' => out.write_str("\\r"),
+        // string-literal-specific characters
         '"' if config.hex_quotes => out.write_str("\\x22"),
         '"' => out.write_str("\\\""),
         '\'' if config.hex_quotes => out.write_str("\\x27"),
         '\'' => out.write_str("\\'"),
         '&' => out.write_str("\\x26"),
         '/' => out.write_str("\\/"),
-        '\\' => out.write_str("\\\\"),
-        '\u{2028}' => out.write_str("\\u2028"),
-        '\u{2029}' => out.write_str("\\u2029"),
-        // other C0 controls
-        c => write!(out, "\\x{:02x}", c as u32),
+        // C0 controls, backslash, and line separators
+        c => {
+            write_js_shared_escape(out, c)?;
+            Ok(())
+        }
     }
+}
+
+/// writes the escape shared by the javascript string-literal and template
+/// encoders: the named C0 control escapes (`\b`, `\t`, `\n`, `\x0b`, `\f`,
+/// `\r`), the `\xHH` fallback for the remaining C0 controls, `\` → `\\`, and
+/// the javascript line terminators U+2028/U+2029.
+///
+/// returns `Ok(true)` when `c` was one of those characters and has been
+/// written, `Ok(false)` when `c` is not shared and the caller must handle it
+/// (e.g. quotes, `&`, `/`, backticks, `$`).
+fn write_js_shared_escape<W: fmt::Write>(out: &mut W, c: char) -> Result<bool, fmt::Error> {
+    match c {
+        '\x08' => out.write_str("\\b")?,
+        '\t' => out.write_str("\\t")?,
+        '\n' => out.write_str("\\n")?,
+        '\x0B' => out.write_str("\\x0b")?,
+        '\x0C' => out.write_str("\\f")?,
+        '\r' => out.write_str("\\r")?,
+        '\\' => out.write_str("\\\\")?,
+        '\u{2028}' => out.write_str("\\u2028")?,
+        '\u{2029}' => out.write_str("\\u2029")?,
+        '\x00'..='\x1F' => write!(out, "\\x{:02x}", c as u32)?,
+        _ => return Ok(false),
+    }
+    Ok(true)
 }
 
 #[cfg(test)]
@@ -519,5 +534,40 @@ mod tests {
         let mut writer_result = String::new();
         write_js_template(&mut writer_result, input).unwrap();
         assert_eq!(string_result, writer_result);
+    }
+
+    // -- write_js_shared_escape helper --
+
+    #[test]
+    fn shared_escape_handles_shared_chars() {
+        let cases = [
+            ('\x08', r"\b"),
+            ('\t', r"\t"),
+            ('\n', r"\n"),
+            ('\x0B', r"\x0b"),
+            ('\x0C', r"\f"),
+            ('\r', r"\r"),
+            ('\\', r"\\"),
+            ('\x00', r"\x00"),
+            ('\x1F', r"\x1f"),
+            ('\u{2028}', r"\u2028"),
+            ('\u{2029}', r"\u2029"),
+        ];
+        for (c, expected) in cases {
+            let mut out = String::new();
+            assert_eq!(write_js_shared_escape(&mut out, c), Ok(true));
+            assert_eq!(out, expected);
+        }
+    }
+
+    #[test]
+    fn shared_escape_declines_format_specific_chars() {
+        // characters the string-literal / template callers handle themselves
+        // are not shared: the helper reports `false` and writes nothing.
+        for c in ['a', '"', '\'', '&', '/', '`', '$', 'é'] {
+            let mut out = String::new();
+            assert_eq!(write_js_shared_escape(&mut out, c), Ok(false));
+            assert!(out.is_empty());
+        }
     }
 }
