@@ -58,7 +58,7 @@ fn is_invalid_for_xml(c: char) -> bool {
 
 /// characters restricted or invalid in xml 1.1 (encoded as `&#xHH;` or, for
 /// nul / noncharacters, replaced with space). mirrors
-/// `xml::is_xml11_restricted_or_invalid`. note NEL (U+0085) is *not* restricted.
+/// `engine::is_xml11_restricted_or_invalid`. note NEL (U+0085) is *not* restricted.
 fn is_xml11_restricted(c: char) -> bool {
     let cp = c as u32;
     cp == 0

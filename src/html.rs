@@ -23,7 +23,27 @@
 
 use std::fmt;
 
-use crate::engine::{encode_loop, is_invalid_for_xml, is_unicode_noncharacter};
+use crate::engine::{
+    encode_loop, is_unicode_noncharacter, write_markup, InvalidCharPolicy, MarkupConfig,
+};
+
+const HTML_FULL: MarkupConfig = MarkupConfig {
+    encode_gt: true,
+    encode_quotes: true,
+    invalid: InvalidCharPolicy::HtmlSpace,
+};
+
+const HTML_CONTENT: MarkupConfig = MarkupConfig {
+    encode_gt: true,
+    encode_quotes: false,
+    invalid: InvalidCharPolicy::HtmlSpace,
+};
+
+const HTML_ATTRIBUTE: MarkupConfig = MarkupConfig {
+    encode_gt: false,
+    encode_quotes: true,
+    invalid: InvalidCharPolicy::HtmlSpace,
+};
 
 /// encodes `input` for safe embedding in HTML text content and quoted attributes.
 ///
@@ -63,23 +83,7 @@ pub fn for_html(input: &str) -> String {
 ///
 /// see [`for_html`] for encoding rules.
 pub fn write_html<W: fmt::Write>(out: &mut W, input: &str) -> fmt::Result {
-    encode_loop(out, input, needs_html_encoding, write_html_encoded)
-}
-
-fn needs_html_encoding(c: char) -> bool {
-    matches!(c, '&' | '<' | '>' | '"' | '\'') || is_invalid_for_xml(c)
-}
-
-fn write_html_encoded<W: fmt::Write>(out: &mut W, c: char, _next: Option<char>) -> fmt::Result {
-    match c {
-        '&' => out.write_str("&amp;"),
-        '<' => out.write_str("&lt;"),
-        '>' => out.write_str("&gt;"),
-        '"' => out.write_str("&#34;"),
-        '\'' => out.write_str("&#39;"),
-        // invalid XML char → space
-        _ => out.write_char(' '),
-    }
+    write_markup(out, input, &HTML_FULL)
 }
 
 /// encodes `input` for safe embedding in HTML text content.
@@ -117,29 +121,7 @@ pub fn for_html_content(input: &str) -> String {
 ///
 /// see [`for_html_content`] for encoding rules.
 pub fn write_html_content<W: fmt::Write>(out: &mut W, input: &str) -> fmt::Result {
-    encode_loop(
-        out,
-        input,
-        needs_html_content_encoding,
-        write_html_content_encoded,
-    )
-}
-
-fn needs_html_content_encoding(c: char) -> bool {
-    matches!(c, '&' | '<' | '>') || is_invalid_for_xml(c)
-}
-
-fn write_html_content_encoded<W: fmt::Write>(
-    out: &mut W,
-    c: char,
-    _next: Option<char>,
-) -> fmt::Result {
-    match c {
-        '&' => out.write_str("&amp;"),
-        '<' => out.write_str("&lt;"),
-        '>' => out.write_str("&gt;"),
-        _ => out.write_char(' '),
-    }
+    write_markup(out, input, &HTML_CONTENT)
 }
 
 /// encodes `input` for safe embedding in a quoted HTML attribute value.
@@ -185,30 +167,7 @@ pub fn for_html_attribute(input: &str) -> String {
 ///
 /// see [`for_html_attribute`] for encoding rules.
 pub fn write_html_attribute<W: fmt::Write>(out: &mut W, input: &str) -> fmt::Result {
-    encode_loop(
-        out,
-        input,
-        needs_html_attribute_encoding,
-        write_html_attribute_encoded,
-    )
-}
-
-fn needs_html_attribute_encoding(c: char) -> bool {
-    matches!(c, '&' | '<' | '"' | '\'') || is_invalid_for_xml(c)
-}
-
-fn write_html_attribute_encoded<W: fmt::Write>(
-    out: &mut W,
-    c: char,
-    _next: Option<char>,
-) -> fmt::Result {
-    match c {
-        '&' => out.write_str("&amp;"),
-        '<' => out.write_str("&lt;"),
-        '"' => out.write_str("&#34;"),
-        '\'' => out.write_str("&#39;"),
-        _ => out.write_char(' '),
-    }
+    write_markup(out, input, &HTML_ATTRIBUTE)
 }
 
 /// encodes `input` for safe embedding in an unquoted HTML attribute value.
