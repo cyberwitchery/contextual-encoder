@@ -29,7 +29,7 @@
 
 use std::fmt;
 
-use crate::engine::{encode_loop, is_invalid_for_xml, is_unicode_noncharacter};
+use crate::engine::{is_invalid_for_xml, write_markup, InvalidCharPolicy, MarkupConfig};
 
 /// encodes `input` for safe embedding in XML text content and quoted attributes.
 ///
@@ -227,6 +227,24 @@ pub fn write_cdata<W: fmt::Write>(out: &mut W, input: &str) -> fmt::Result {
     Ok(())
 }
 
+const XML11_FULL: MarkupConfig = MarkupConfig {
+    encode_gt: true,
+    encode_quotes: true,
+    invalid: InvalidCharPolicy::Xml11Reference,
+};
+
+const XML11_CONTENT: MarkupConfig = MarkupConfig {
+    encode_gt: true,
+    encode_quotes: false,
+    invalid: InvalidCharPolicy::Xml11Reference,
+};
+
+const XML11_ATTRIBUTE: MarkupConfig = MarkupConfig {
+    encode_gt: false,
+    encode_quotes: true,
+    invalid: InvalidCharPolicy::Xml11Reference,
+};
+
 /// encodes `input` for safe embedding in XML 1.1 text content and quoted
 /// attributes.
 ///
@@ -257,7 +275,7 @@ pub fn for_xml11(input: &str) -> String {
 ///
 /// see [`for_xml11`] for encoding rules.
 pub fn write_xml11<W: fmt::Write>(out: &mut W, input: &str) -> fmt::Result {
-    encode_loop(out, input, needs_xml11_encoding, write_xml11_encoded)
+    write_markup(out, input, &XML11_FULL)
 }
 
 /// encodes `input` for safe embedding in XML 1.1 text content only.
@@ -283,12 +301,7 @@ pub fn for_xml11_content(input: &str) -> String {
 ///
 /// see [`for_xml11_content`] for encoding rules.
 pub fn write_xml11_content<W: fmt::Write>(out: &mut W, input: &str) -> fmt::Result {
-    encode_loop(
-        out,
-        input,
-        needs_xml11_content_encoding,
-        write_xml11_content_encoded,
-    )
+    write_markup(out, input, &XML11_CONTENT)
 }
 
 /// encodes `input` for safe embedding in a quoted XML 1.1 attribute value.
@@ -314,87 +327,7 @@ pub fn for_xml11_attribute(input: &str) -> String {
 ///
 /// see [`for_xml11_attribute`] for encoding rules.
 pub fn write_xml11_attribute<W: fmt::Write>(out: &mut W, input: &str) -> fmt::Result {
-    encode_loop(
-        out,
-        input,
-        needs_xml11_attribute_encoding,
-        write_xml11_attribute_encoded,
-    )
-}
-
-/// returns true if the character is restricted in XML 1.1.
-///
-/// restricted characters are: U+0001-U+0008, U+000B-U+000C, U+000E-U+001F,
-/// U+007F-U+0084, U+0086-U+009F. note that NUL (U+0000) is not restricted
-/// but is *invalid* (not in the Char production). NEL (U+0085) is NOT
-/// restricted in XML 1.1.
-fn is_xml11_restricted_or_invalid(c: char) -> bool {
-    let cp = c as u32;
-    cp == 0
-        || (0x01..=0x08).contains(&cp)
-        || cp == 0x0B
-        || cp == 0x0C
-        || (0x0E..=0x1F).contains(&cp)
-        || (0x7F..=0x84).contains(&cp)
-        || (0x86..=0x9F).contains(&cp)
-        || is_unicode_noncharacter(cp)
-}
-
-fn needs_xml11_encoding(c: char) -> bool {
-    matches!(c, '&' | '<' | '>' | '"' | '\'') || is_xml11_restricted_or_invalid(c)
-}
-
-fn write_xml11_encoded<W: fmt::Write>(out: &mut W, c: char, _next: Option<char>) -> fmt::Result {
-    match c {
-        '&' => out.write_str("&amp;"),
-        '<' => out.write_str("&lt;"),
-        '>' => out.write_str("&gt;"),
-        '"' => out.write_str("&#34;"),
-        '\'' => out.write_str("&#39;"),
-        '\0' => out.write_char(' '),
-        c if is_unicode_noncharacter(c as u32) => out.write_char(' '),
-        // restricted controls → hex character reference
-        c => write!(out, "&#x{:x};", c as u32),
-    }
-}
-
-fn needs_xml11_content_encoding(c: char) -> bool {
-    matches!(c, '&' | '<' | '>') || is_xml11_restricted_or_invalid(c)
-}
-
-fn write_xml11_content_encoded<W: fmt::Write>(
-    out: &mut W,
-    c: char,
-    _next: Option<char>,
-) -> fmt::Result {
-    match c {
-        '&' => out.write_str("&amp;"),
-        '<' => out.write_str("&lt;"),
-        '>' => out.write_str("&gt;"),
-        '\0' => out.write_char(' '),
-        c if is_unicode_noncharacter(c as u32) => out.write_char(' '),
-        c => write!(out, "&#x{:x};", c as u32),
-    }
-}
-
-fn needs_xml11_attribute_encoding(c: char) -> bool {
-    matches!(c, '&' | '<' | '"' | '\'') || is_xml11_restricted_or_invalid(c)
-}
-
-fn write_xml11_attribute_encoded<W: fmt::Write>(
-    out: &mut W,
-    c: char,
-    _next: Option<char>,
-) -> fmt::Result {
-    match c {
-        '&' => out.write_str("&amp;"),
-        '<' => out.write_str("&lt;"),
-        '"' => out.write_str("&#34;"),
-        '\'' => out.write_str("&#39;"),
-        '\0' => out.write_char(' '),
-        c if is_unicode_noncharacter(c as u32) => out.write_char(' '),
-        c => write!(out, "&#x{:x};", c as u32),
-    }
+    write_markup(out, input, &XML11_ATTRIBUTE)
 }
 
 #[cfg(test)]

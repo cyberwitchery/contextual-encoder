@@ -65,6 +65,115 @@ pub(crate) fn is_invalid_for_xml(c: char) -> bool {
         || is_unicode_noncharacter(cp)
 }
 
+/// returns true if the character is restricted or invalid in XML 1.1 output.
+///
+/// unlike [`is_invalid_for_xml`], the C1 controls are split: NEL (U+0085) is
+/// **not** restricted in XML 1.1 and passes through unchanged, while the rest
+/// of the range is. covers:
+/// - NUL (U+0000) — invalid (not in the Char production)
+/// - U+0001-U+0008, U+000B-U+000C, U+000E-U+001F (restricted C0 controls)
+/// - U+007F-U+0084, U+0086-U+009F (DEL and restricted C1 controls, except NEL)
+/// - unicode non-characters
+pub(crate) fn is_xml11_restricted_or_invalid(c: char) -> bool {
+    let cp = c as u32;
+    cp == 0
+        || (0x01..=0x08).contains(&cp)
+        || cp == 0x0B
+        || cp == 0x0C
+        || (0x0E..=0x1F).contains(&cp)
+        || (0x7F..=0x84).contains(&cp)
+        || (0x86..=0x9F).contains(&cp)
+        || is_unicode_noncharacter(cp)
+}
+
+/// how a markup encoder renders characters that are invalid or restricted for
+/// its XML version. this is the only axis on which the HTML and XML 1.1 markup
+/// families differ — the entity table and per-context masks are shared.
+#[derive(Clone, Copy)]
+pub(crate) enum InvalidCharPolicy {
+    /// HTML / XML 1.0: every invalid character becomes a single space.
+    HtmlSpace,
+    /// XML 1.1: NUL and non-characters become a space; the restricted C0/C1
+    /// controls become `&#xHH;` hex character references.
+    Xml11Reference,
+}
+
+impl InvalidCharPolicy {
+    /// returns true if `c` is invalid/restricted under this policy and so must
+    /// be replaced or referenced rather than written literally.
+    fn is_invalid(self, c: char) -> bool {
+        match self {
+            Self::HtmlSpace => is_invalid_for_xml(c),
+            Self::Xml11Reference => is_xml11_restricted_or_invalid(c),
+        }
+    }
+
+    /// writes the replacement for an invalid/restricted `c`.
+    fn write_invalid<W: fmt::Write>(self, out: &mut W, c: char) -> fmt::Result {
+        match self {
+            Self::HtmlSpace => out.write_char(' '),
+            Self::Xml11Reference if c == '\0' || is_unicode_noncharacter(c as u32) => {
+                out.write_char(' ')
+            }
+            Self::Xml11Reference => write!(out, "&#x{:x};", c as u32),
+        }
+    }
+}
+
+/// per-context configuration for the shared HTML / XML 1.1 markup encoder.
+///
+/// the entity table is identical across every context (`&` → `&amp;`,
+/// `<` → `&lt;`, `>` → `&gt;`, `"` → `&#34;`, `'` → `&#39;`), and `&` and `<`
+/// are always encoded. the fields below capture the only differences between
+/// the six public markup encoders.
+#[derive(Clone, Copy)]
+pub(crate) struct MarkupConfig {
+    /// encode `>` as `&gt;` (true for the full and content contexts).
+    pub(crate) encode_gt: bool,
+    /// encode `"`/`'` as `&#34;`/`&#39;` (true for the full and attribute contexts).
+    pub(crate) encode_quotes: bool,
+    /// how invalid/restricted characters are rendered.
+    pub(crate) invalid: InvalidCharPolicy,
+}
+
+/// writes `input` to `out`, encoding markup characters per `config`.
+///
+/// this is the shared core behind the HTML and XML 1.1 full/content/attribute
+/// encoders; each public encoder is a thin wrapper over this with a `const`
+/// [`MarkupConfig`].
+pub(crate) fn write_markup<W: fmt::Write>(
+    out: &mut W,
+    input: &str,
+    config: &MarkupConfig,
+) -> fmt::Result {
+    encode_loop(
+        out,
+        input,
+        |c| needs_markup_encoding(c, config),
+        |out, c, _next| write_markup_encoded(out, c, config),
+    )
+}
+
+fn needs_markup_encoding(c: char, config: &MarkupConfig) -> bool {
+    match c {
+        '&' | '<' => true,
+        '>' => config.encode_gt,
+        '"' | '\'' => config.encode_quotes,
+        _ => config.invalid.is_invalid(c),
+    }
+}
+
+fn write_markup_encoded<W: fmt::Write>(out: &mut W, c: char, config: &MarkupConfig) -> fmt::Result {
+    match c {
+        '&' => out.write_str("&amp;"),
+        '<' => out.write_str("&lt;"),
+        '>' => out.write_str("&gt;"),
+        '"' => out.write_str("&#34;"),
+        '\'' => out.write_str("&#39;"),
+        _ => config.invalid.write_invalid(out, c),
+    }
+}
+
 /// attempts to write a rust-style named escape for the given character.
 ///
 /// covers the escapes used by rust: NUL (`\0`), TAB (`\t`), LF (`\n`),
