@@ -29,7 +29,9 @@
 
 use std::fmt;
 
-use crate::engine::{is_invalid_for_xml, write_markup, InvalidCharPolicy, MarkupConfig};
+use crate::engine::{
+    encode_loop, is_invalid_for_xml, write_markup, InvalidCharPolicy, MarkupConfig,
+};
 
 /// encodes `input` for safe embedding in XML text content and quoted attributes.
 ///
@@ -134,31 +136,25 @@ pub fn for_xml_comment(input: &str) -> String {
 /// see [`for_xml_comment`] for encoding rules.
 pub fn write_xml_comment<W: fmt::Write>(out: &mut W, input: &str) -> fmt::Result {
     let mut last_was_hyphen = false;
-    let mut chars = input.chars().peekable();
-
-    while let Some(c) = chars.next() {
-        if c == '-' {
-            if last_was_hyphen {
-                // second hyphen in -- sequence → replace with ~
-                out.write_char('~')?;
+    encode_loop(
+        out,
+        input,
+        |c| c == '-' || is_invalid_for_xml(c),
+        |out, c, next| {
+            if c != '-' {
                 last_was_hyphen = false;
-            } else if chars.peek().is_none() {
-                // trailing hyphen → replace with ~
-                out.write_char('~')?;
+                out.write_char(' ')
+            } else if last_was_hyphen {
+                last_was_hyphen = false;
+                out.write_char('~')
+            } else if next.is_none() {
+                out.write_char('~')
             } else {
-                out.write_char('-')?;
-                last_was_hyphen = true;
+                last_was_hyphen = next == Some('-');
+                out.write_char('-')
             }
-        } else if is_invalid_for_xml(c) {
-            out.write_char(' ')?;
-            last_was_hyphen = false;
-        } else {
-            out.write_char(c)?;
-            last_was_hyphen = false;
-        }
-    }
-
-    Ok(())
+        },
+    )
 }
 
 /// encodes `input` for safe embedding in an XML CDATA section.
@@ -193,38 +189,31 @@ pub fn for_cdata(input: &str) -> String {
 /// see [`for_cdata`] for encoding rules.
 pub fn write_cdata<W: fmt::Write>(out: &mut W, input: &str) -> fmt::Result {
     let mut bracket_count: u32 = 0;
-
-    for c in input.chars() {
-        if c == ']' {
-            bracket_count += 1;
-        } else if c == '>' && bracket_count >= 2 {
-            // found ]]> — flush extra brackets, then split
-            for _ in 0..(bracket_count - 2) {
-                out.write_char(']')?;
-            }
-            out.write_str("]]]]><![CDATA[>")?;
-            bracket_count = 0;
-        } else {
-            // flush buffered brackets
-            for _ in 0..bracket_count {
-                out.write_char(']')?;
-            }
-            bracket_count = 0;
-
-            if is_invalid_for_xml(c) {
-                out.write_char(' ')?;
+    encode_loop(
+        out,
+        input,
+        |c| c == ']' || c == '>' || is_invalid_for_xml(c),
+        |out, c, next| {
+            if c == ']' {
+                bracket_count += 1;
+                if next != Some(']') && next != Some('>') {
+                    bracket_count = 0;
+                }
+                out.write_char(']')
+            } else if c == '>' {
+                let split = bracket_count >= 2;
+                bracket_count = 0;
+                if split {
+                    out.write_str("]]><![CDATA[>")
+                } else {
+                    out.write_char('>')
+                }
             } else {
-                out.write_char(c)?;
+                bracket_count = 0;
+                out.write_char(' ')
             }
-        }
-    }
-
-    // flush remaining brackets
-    for _ in 0..bracket_count {
-        out.write_char(']')?;
-    }
-
-    Ok(())
+        },
+    )
 }
 
 const XML11_FULL: MarkupConfig = MarkupConfig {
@@ -371,6 +360,12 @@ mod tests {
     }
 
     #[test]
+    fn comment_hyphen_not_paired_across_run() {
+        assert_eq!(for_xml_comment("-a-b"), "-a-b");
+        assert_eq!(for_xml_comment("a-b-c"), "a-b-c");
+    }
+
+    #[test]
     fn comment_replaces_invalid_xml() {
         assert_eq!(for_xml_comment("a\x01b"), "a b");
         assert_eq!(for_xml_comment("a\x7Fb"), "a b");
@@ -411,6 +406,12 @@ mod tests {
         assert_eq!(for_cdata("]]"), "]]");
         assert_eq!(for_cdata("]"), "]");
         assert_eq!(for_cdata("]]a"), "]]a");
+    }
+
+    #[test]
+    fn cdata_bracket_run_reset_before_gt() {
+        assert_eq!(for_cdata("]]a>"), "]]a>");
+        assert_eq!(for_cdata("]] >"), "]] >");
     }
 
     #[test]
