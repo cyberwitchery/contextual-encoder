@@ -661,9 +661,9 @@ mod css {
     // -- for_css_url vs for_css_string --
 
     #[test]
-    fn url_does_not_encode_parens() {
-        assert_eq!(for_css_url("a(b)c"), "a(b)c");
-        // but css_string does — c is a hex digit so space after \29
+    fn url_encodes_parens_like_string() {
+        // c is a hex digit so a separator space follows \29
+        assert_eq!(for_css_url("a(b)c"), r"a\28 b\29 c");
         assert_eq!(for_css_string("a(b)c"), r"a\28 b\29 c");
     }
 
@@ -673,6 +673,68 @@ mod css {
         assert_eq!(for_css_url("'"), r"\27");
         assert_eq!(for_css_url("\\"), r"\5c");
         assert_eq!(for_css_url("<"), r"\3c");
+    }
+
+    // -- url-token terminators (CSS Syntax Level 3 §4.3.6) --
+
+    #[test]
+    fn url_encodes_closing_paren() {
+        // issue #49: `)` ends an unquoted url-token, and the declaration block
+        assert_eq!(for_css_url(")"), r"\29");
+        let encoded = for_css_url(");color:red}x{");
+        assert_eq!(encoded, r"\29;color:red}x{");
+        assert_eq!(
+            format!("#victim{{color:green;background:url({encoded});}}"),
+            r"#victim{color:green;background:url(\29;color:red}x{);}"
+        );
+    }
+
+    #[test]
+    fn url_encodes_opening_paren() {
+        assert_eq!(for_css_url("("), r"\28");
+    }
+
+    #[test]
+    fn url_encodes_css_whitespace() {
+        assert_eq!(for_css_url(" "), r"\20");
+        assert_eq!(for_css_url("\t"), r"\9");
+        assert_eq!(for_css_url("\n"), r"\a");
+        assert_eq!(for_css_url("\r"), r"\d");
+        assert_eq!(for_css_url("\x0C"), r"\c");
+        assert_eq!(for_css_url("a b"), r"a\20 b");
+        assert_eq!(for_css_url("a  b"), r"a\20 \20 b");
+    }
+
+    #[test]
+    fn url_preserves_unicode_spaces() {
+        // css whitespace is space, tab and newline; the rest are ident chars
+        assert_eq!(for_css_url("a\u{00A0}b"), "a\u{00A0}b");
+        assert_eq!(for_css_url("a\u{2003}b"), "a\u{2003}b");
+        assert_eq!(for_css_url("a\u{3000}b"), "a\u{3000}b");
+    }
+
+    #[test]
+    fn url_encodes_non_printables() {
+        // U+0000-U+0008, U+000B, U+000E-U+001F and DEL invalidate a url-token
+        for cp in (0x00u32..=0x08)
+            .chain([0x0B])
+            .chain(0x0E..=0x1F)
+            .chain([0x7F])
+        {
+            let input = String::from(char::from_u32(cp).unwrap());
+            let encoded = for_css_url(&input);
+            assert!(
+                encoded.starts_with('\\'),
+                "U+{cp:04X} should be CSS-encoded, got {encoded:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn url_string_encoding_agrees_without_spaces() {
+        for input in ["image.png", "a(b)c", "expression(alert(1))", "café", ")("] {
+            assert_eq!(for_css_url(input), for_css_string(input), "input {input:?}");
+        }
     }
 }
 
