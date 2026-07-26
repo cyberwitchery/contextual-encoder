@@ -64,7 +64,7 @@ fn main() {
         for_javascript_block(input)
     );
 
-    // standalone .js / json files — minimal, NOT safe in any html context
+    // standalone .js files — minimal, NOT safe in any html context
     println!(
         "  for_javascript_source:        {}",
         for_javascript_source(input)
