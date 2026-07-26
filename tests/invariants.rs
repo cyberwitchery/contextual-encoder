@@ -14,7 +14,9 @@
 //!
 //! the decoders and safety predicates are modelled directly on each encoder's
 //! documented mapping, so a passing sweep means the invariant genuinely holds
-//! rather than that the predicate is vacuous.
+//! rather than that the predicate is vacuous. the CSS contexts go further and
+//! run a tokenizer transcribed from CSS Syntax Level 3 §4.3 over the encoded
+//! output.
 
 use std::fmt;
 
@@ -460,10 +462,9 @@ fn safety_html_family() {
 /// true if the char is a dangerous CSS char that must be hex-escaped, excluding
 /// backslash (which legitimately appears as the escape introducer) — see
 /// `css_backslashes_escaped` for that half of the invariant.
-fn css_forbidden_raw(c: char, string_ctx: bool) -> bool {
+fn css_forbidden_raw(c: char) -> bool {
     let cp = c as u32;
-    matches!(c, '"' | '\'' | '<' | '&' | '/' | '>')
-        || (string_ctx && matches!(c, '(' | ')'))
+    matches!(c, '"' | '\'' | '<' | '&' | '/' | '>' | '(' | ')')
         || cp <= 0x1F
         || (0x7F..=0x9F).contains(&cp)
         || cp == 0x2028
@@ -491,7 +492,7 @@ fn safety_css() {
         let s = one(c, &mut buf);
 
         let out = for_css_string(s);
-        if let Some(bad) = out.chars().find(|&c| css_forbidden_raw(c, true)) {
+        if let Some(bad) = out.chars().find(|&c| css_forbidden_raw(c)) {
             panic!("for_css_string: raw {bad:?} in {out:?} for input {c:?}");
         }
         assert!(
@@ -500,13 +501,310 @@ fn safety_css() {
         );
 
         let out = for_css_url(s);
-        if let Some(bad) = out.chars().find(|&c| css_forbidden_raw(c, false)) {
+        if let Some(bad) = out.chars().find(|&c| css_forbidden_raw(c)) {
             panic!("for_css_url: raw {bad:?} in {out:?} for input {c:?}");
         }
         assert!(
             css_backslashes_escaped(&out),
             "for_css_url: unescaped backslash in {out:?} for input {c:?}"
         );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// css tokenizer (CSS Syntax Level 3 §4.3), used by the css breakout invariants
+// ---------------------------------------------------------------------------
+
+/// §3.3 preprocessing: CR, FF and CRLF become LF; NUL becomes U+FFFD.
+/// (surrogates cannot occur in a rust `str`.)
+fn css_preprocess(input: &str) -> Vec<char> {
+    let mut out = Vec::with_capacity(input.len());
+    let mut chars = input.chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            '\r' => {
+                if chars.peek() == Some(&'\n') {
+                    chars.next();
+                }
+                out.push('\n');
+            }
+            '\u{c}' => out.push('\n'),
+            '\0' => out.push('\u{FFFD}'),
+            c => out.push(c),
+        }
+    }
+    out
+}
+
+/// §4.2: whitespace is newline, tab and space — no other unicode space counts.
+fn is_css_whitespace(c: char) -> bool {
+    matches!(c, '\n' | '\t' | ' ')
+}
+
+/// §4.2 non-printable code point.
+fn is_non_printable(c: char) -> bool {
+    let cp = c as u32;
+    cp <= 0x08 || cp == 0x0B || (0x0E..=0x1F).contains(&cp) || cp == 0x7F
+}
+
+/// §4.3.8 check if two code points are a valid escape, with `cs[i]` the `\`.
+fn starts_valid_escape(cs: &[char], i: usize) -> bool {
+    cs.get(i) == Some(&'\\') && cs.get(i + 1) != Some(&'\n')
+}
+
+/// §4.3.7 consume an escaped code point; `i` points just past the `\`.
+fn consume_escaped(cs: &[char], i: &mut usize) -> char {
+    let start = *i;
+    while *i - start < 6 && cs.get(*i).is_some_and(char::is_ascii_hexdigit) {
+        *i += 1;
+    }
+    if *i == start {
+        return match cs.get(*i) {
+            Some(&c) => {
+                *i += 1;
+                c
+            }
+            None => '\u{FFFD}',
+        };
+    }
+    let cp = cs[start..*i]
+        .iter()
+        .fold(0u32, |acc, c| acc * 16 + c.to_digit(16).expect("hex digit"));
+    if cs.get(*i).is_some_and(|&c| is_css_whitespace(c)) {
+        *i += 1;
+    }
+    char::from_u32(cp).filter(|_| cp != 0).unwrap_or('\u{FFFD}')
+}
+
+/// §4.3.14 consume the remnants of a bad url.
+fn consume_bad_url_remnants(cs: &[char], i: &mut usize) {
+    while let Some(&c) = cs.get(*i) {
+        if starts_valid_escape(cs, *i) {
+            *i += 1;
+            consume_escaped(cs, i);
+            continue;
+        }
+        *i += 1;
+        if c == ')' {
+            return;
+        }
+    }
+}
+
+/// outcome of §4.3.6 "consume a url token".
+enum UrlToken {
+    /// a `<url-token>`: its unescaped value and the index just past the token.
+    Url(String, usize),
+    /// a `<bad-url-token>`: the index just past the remnants it swallowed.
+    Bad(usize),
+}
+
+/// §4.3.6 consume a url token; `i` points just past `url(`.
+fn consume_url_token(cs: &[char], mut i: usize) -> UrlToken {
+    let mut value = String::new();
+    let bad = |i: &mut usize| {
+        consume_bad_url_remnants(cs, i);
+        UrlToken::Bad(*i)
+    };
+    while cs.get(i).is_some_and(|&c| is_css_whitespace(c)) {
+        i += 1;
+    }
+    loop {
+        let Some(&c) = cs.get(i) else {
+            return UrlToken::Url(value, i);
+        };
+        if c == '\\' {
+            if !starts_valid_escape(cs, i) {
+                return bad(&mut i);
+            }
+            i += 1;
+            value.push(consume_escaped(cs, &mut i));
+            continue;
+        }
+        i += 1;
+        match c {
+            ')' => return UrlToken::Url(value, i),
+            c if is_css_whitespace(c) => {
+                while cs.get(i).is_some_and(|&c| is_css_whitespace(c)) {
+                    i += 1;
+                }
+                return match cs.get(i).copied() {
+                    None => UrlToken::Url(value, i),
+                    Some(')') => UrlToken::Url(value, i + 1),
+                    Some(_) => bad(&mut i),
+                };
+            }
+            '"' | '\'' | '(' => return bad(&mut i),
+            c if is_non_printable(c) => return bad(&mut i),
+            c => value.push(c),
+        }
+    }
+}
+
+/// outcome of §4.3.5 "consume a string token".
+enum StringToken {
+    /// a `<string-token>`: its unescaped value and the index just past the token.
+    Str(String, usize),
+    Bad,
+}
+
+/// §4.3.5 consume a string token; `i` points just past the opening `ending`.
+fn consume_string_token(cs: &[char], mut i: usize, ending: char) -> StringToken {
+    let mut value = String::new();
+    loop {
+        let Some(&c) = cs.get(i) else {
+            return StringToken::Str(value, i);
+        };
+        i += 1;
+        match c {
+            c if c == ending => return StringToken::Str(value, i),
+            '\n' => return StringToken::Bad,
+            '\\' => match cs.get(i) {
+                None => {}
+                Some(&'\n') => i += 1,
+                Some(_) => value.push(consume_escaped(cs, &mut i)),
+            },
+            c => value.push(c),
+        }
+    }
+}
+
+/// the value a conforming parser must recover: the css encoders replace
+/// noncharacters with `_`, and a `\0` escape decodes to U+FFFD.
+fn css_expected_value(input: &str) -> String {
+    input
+        .chars()
+        .map(|c| match c {
+            c if is_noncharacter(c as u32) => '_',
+            '\0' => '\u{FFFD}',
+            c => c,
+        })
+        .collect()
+}
+
+/// a declaration placed after the encoded value, so that an early terminator or
+/// a bad url's remnant consumption shows up as the token running past its `)`.
+const CSS_TAIL: &str = ";color:green}";
+
+/// asserts `url(<for_css_url(input)>)` is one url-token spanning the whole
+/// value: no early terminator, no bad-url-token, no change to the value.
+fn assert_url_token_intact(input: &str) {
+    let encoded = for_css_url(input);
+    let sheet = css_preprocess(&format!("url({encoded}){CSS_TAIL}"));
+    let expected_end = sheet.len() - CSS_TAIL.chars().count();
+    match consume_url_token(&sheet, 4) {
+        UrlToken::Url(value, end) => {
+            assert_eq!(
+                end, expected_end,
+                "for_css_url: url-token did not end at its `)` for {input:?} -> {encoded:?}"
+            );
+            assert_eq!(
+                value,
+                css_expected_value(input),
+                "for_css_url: value altered for {input:?} -> {encoded:?}"
+            );
+        }
+        UrlToken::Bad(end) => panic!(
+            "for_css_url: bad-url-token for {input:?} -> {encoded:?}, swallowing {:?}",
+            sheet[..end].iter().collect::<String>()
+        ),
+    }
+}
+
+/// the [`assert_url_token_intact`] analogue for quoted string values, checked
+/// against both delimiters.
+fn assert_string_token_intact(input: &str) {
+    let encoded = for_css_string(input);
+    for quote in ['"', '\''] {
+        let sheet = css_preprocess(&format!("{quote}{encoded}{quote}{CSS_TAIL}"));
+        let expected_end = sheet.len() - CSS_TAIL.chars().count();
+        match consume_string_token(&sheet, 1, quote) {
+            StringToken::Str(value, end) => {
+                assert_eq!(
+                    end, expected_end,
+                    "for_css_string: string-token did not end at its {quote:?} for {input:?} -> {encoded:?}"
+                );
+                assert_eq!(
+                    value,
+                    css_expected_value(input),
+                    "for_css_string: value altered for {input:?} -> {encoded:?}"
+                );
+            }
+            StringToken::Bad => {
+                panic!("for_css_string: bad-string-token for {input:?} -> {encoded:?}")
+            }
+        }
+    }
+}
+
+/// inputs aimed at the css tokenizer: every url-token terminator and bad-url
+/// trigger, the issue #49 payload, and the suite's cross-context payloads.
+const CSS_ADVERSARIAL: &[&str] = &[
+    "",
+    ");color:red}x{",
+    ");}",
+    ")",
+    "(",
+    "a(b)",
+    " ",
+    "  ",
+    "a b",
+    " )",
+    "( )",
+    "a\tb",
+    "a\nb",
+    "a\rb",
+    "a\r\nb",
+    "a\u{c}b",
+    "\\",
+    "\\)",
+    "a\\",
+    "url(x)",
+    "image.png",
+    "http://example.com/a(1).png",
+    "expression(alert(1))",
+    "<script>alert('xss')</script>",
+    "a'b\"c&d/e",
+    "]]>--`${x}`",
+    "café 世界 😀 𐍈",
+    "\x00\x0b\x1f\x7f\u{85}\u{2028}",
+    "\u{FDD0}\u{FFFE}\u{FFFF}",
+    "a\u{a0}b\u{2003}c\u{3000}d",
+];
+
+#[test]
+fn safety_css_url_stays_one_url_token() {
+    let mut buf = [0u8; 4];
+    for c in scalars() {
+        assert_url_token_intact(one(c, &mut buf));
+    }
+    for input in CSS_ADVERSARIAL {
+        assert_url_token_intact(input);
+    }
+}
+
+#[test]
+fn safety_css_string_stays_one_string_token() {
+    let mut buf = [0u8; 4];
+    for c in scalars() {
+        assert_string_token_intact(one(c, &mut buf));
+    }
+    for input in CSS_ADVERSARIAL {
+        assert_string_token_intact(input);
+    }
+}
+
+#[test]
+fn css_url_encodes_a_superset_of_css_string() {
+    let mut buf = [0u8; 4];
+    for c in scalars() {
+        let s = one(c, &mut buf);
+        let expected = if c == ' ' {
+            String::from(r"\20")
+        } else {
+            for_css_string(s)
+        };
+        assert_eq!(for_css_url(s), expected, "css_url vs css_string for {c:?}");
     }
 }
 

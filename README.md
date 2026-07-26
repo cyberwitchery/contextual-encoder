@@ -86,7 +86,7 @@ see [examples](#examples) for the other contexts, or run
 | function | safe for | notes |
 |----------|----------|-------|
 | `for_css_string` | quoted CSS string values | hex escapes with separator spaces |
-| `for_css_url` | CSS `url()` values | like `for_css_string` but parens pass through |
+| `for_css_url` | CSS `url()` values, quoted or unquoted | like `for_css_string` plus space — output is always one url-token |
 
 ### URI
 

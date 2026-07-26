@@ -3,7 +3,7 @@
 //! provides two encoding contexts:
 //!
 //! - [`for_css_string`] — safe for CSS string values (inside quotes)
-//! - [`for_css_url`] — safe for CSS `url()` values
+//! - [`for_css_url`] — safe for CSS `url()` values, quoted or unquoted
 //!
 //! both use CSS hex escape syntax (`\XX`) with a trailing space appended
 //! when the next character could be misinterpreted as part of the hex value.
@@ -64,11 +64,17 @@ fn needs_css_string_encoding(c: char) -> bool {
 
 /// encodes `input` for safe embedding in a CSS `url()` value.
 ///
-/// identical to [`for_css_string`] except parentheses `(` and `)` are
-/// **not** encoded (they are part of the `url()` syntax, not the value).
+/// whatever the input, `url(<output>)` is exactly one url-token: nothing can
+/// terminate it early or turn it into a bad-url-token. the CSS parser unescapes
+/// the value before resolving it, so a URL that genuinely contains `(`, `)` or
+/// a space still points at the same resource.
 ///
 /// the URL **must be validated** before encoding (e.g., ensure the scheme
 /// is allowed). encoding only prevents syntax breakout, not malicious URLs.
+///
+/// # encoded characters
+///
+/// everything [`for_css_string`] encodes, plus space (U+0020).
 ///
 /// # examples
 ///
@@ -78,7 +84,7 @@ fn needs_css_string_encoding(c: char) -> bool {
 /// assert_eq!(for_css_url("image.png"), "image.png");
 /// // b is a hex digit, so trailing space after \27
 /// assert_eq!(for_css_url("a'b"), r"a\27 b");
-/// assert_eq!(for_css_url("a(b)"), "a(b)");
+/// assert_eq!(for_css_url("a(b)"), r"a\28 b\29");
 /// ```
 pub fn for_css_url(input: &str) -> String {
     let mut out = String::with_capacity(input.len());
@@ -94,8 +100,8 @@ pub fn write_css_url<W: fmt::Write>(out: &mut W, input: &str) -> fmt::Result {
 }
 
 fn needs_css_url_encoding(c: char) -> bool {
-    needs_css_common_encoding(c)
-    // parentheses NOT encoded in url context
+    // css whitespace is space, tab and newline; only space is not a C0 control
+    needs_css_string_encoding(c) || c == ' '
 }
 
 fn needs_css_common_encoding(c: char) -> bool {
@@ -249,8 +255,21 @@ mod tests {
     // -- for_css_url --
 
     #[test]
-    fn css_url_does_not_encode_parens() {
-        assert_eq!(for_css_url("a(b)c"), "a(b)c");
+    fn css_url_encodes_parens() {
+        assert_eq!(for_css_url("a(b)c"), r"a\28 b\29 c");
+    }
+
+    #[test]
+    fn css_url_encodes_space() {
+        assert_eq!(for_css_url("a b"), r"a\20 b");
+        assert_eq!(for_css_url(" "), r"\20");
+    }
+
+    #[test]
+    fn css_url_preserves_unicode_spaces() {
+        assert_eq!(for_css_url("a\u{a0}b"), "a\u{a0}b");
+        assert_eq!(for_css_url("a\u{2003}b"), "a\u{2003}b");
+        assert_eq!(for_css_url("a\u{3000}b"), "a\u{3000}b");
     }
 
     #[test]

@@ -82,7 +82,7 @@ fn main() {
     println!("--- css ---");
     println!("  for_css_string:               {}", for_css_string(input));
 
-    // css url() values — like for_css_string but parens pass through
+    // css url() values, quoted or unquoted — like for_css_string plus space
     println!("  for_css_url:                  {}", for_css_url(input));
     println!();
 

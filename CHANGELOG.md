@@ -1,5 +1,18 @@
 # changelog
 
+## Unreleased
+
+- **breaking:** `for_css_url` now hex-escapes `(`, `)` and space (#49). a `)` in
+  an unquoted `url()` value could previously close the URL token and the
+  declaration block, injecting a declaration the template never contained; `(`
+  or a space produced a bad-url-token, whose remnants swallow everything up to
+  the next `)` in the stylesheet. the output is now always exactly one
+  url-token, which makes `for_css_url` a superset of `for_css_string` rather
+  than a relaxation of it, and safe inside `url("...")` as well as `url(...)`
+- URLs that genuinely contain parentheses or spaces still resolve — the CSS
+  parser unescapes `\28`, `\29` and `\20` back to the original characters
+  before the URL is used
+
 ## [0.6.0] - 2026-07-05
 
 - form-urlencoded encoder: `for_form_urlencoded`, `write_form_urlencoded`, `display_form_urlencoded` — percent-encodes values per the WHATWG URL Standard `application/x-www-form-urlencoded` byte serializer (space → `+`, `*-._` and alphanumerics pass through, everything else percent-encoded)

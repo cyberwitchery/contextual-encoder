@@ -79,7 +79,7 @@
 //! | function | safe for |
 //! |----------|----------|
 //! | [`for_css_string`] | quoted CSS string values |
-//! | [`for_css_url`] | CSS `url()` values |
+//! | [`for_css_url`] | CSS `url()` values, quoted or unquoted |
 //!
 //! ## URI
 //!
