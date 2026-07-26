@@ -78,7 +78,7 @@ see [examples](#examples) for the other contexts, or run
 | `for_javascript` | general JS string contexts | caller supplies quotes; hex-encodes quotes for HTML safety |
 | `for_javascript_attribute` | HTML event attributes | does not escape `/` |
 | `for_javascript_block` | `<script>` blocks | uses backslash quote escapes |
-| `for_javascript_source` | standalone .js / JSON files | minimal encoding |
+| `for_javascript_source` | standalone .js files | minimal encoding; not valid JSON — use `for_json` |
 | `for_js_template` | ES6 template literal content | escapes `` ` `` and `${` |
 
 ### CSS

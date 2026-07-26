@@ -7,7 +7,7 @@
 //! - [`for_javascript_attribute`] — optimized for HTML event attributes
 //!   (e.g., `onclick="..."`)
 //! - [`for_javascript_block`] — optimized for `<script>` blocks
-//! - [`for_javascript_source`] — optimized for standalone .js / JSON files
+//! - [`for_javascript_source`] — optimized for standalone .js files
 //! - [`for_js_template`] — for ES6 template literal content (`` `...` ``)
 //!
 //! # security notes
@@ -23,6 +23,9 @@
 //!   for quotes (`\"`, `\'`) which are **not safe in HTML attribute contexts**.
 //! - `for_javascript_attribute` does not escape `/` and is **not safe in
 //!   `<script>` blocks** where `</script>` could appear.
+//! - none of these encoders produce valid JSON — the `\xHH` escapes they emit
+//!   for control characters are not permitted in JSON. use
+//!   [`for_json`](crate::for_json) for JSON string values.
 
 use std::fmt;
 
@@ -169,18 +172,25 @@ pub fn write_javascript_block<W: fmt::Write>(out: &mut W, input: &str) -> fmt::R
 }
 
 /// encodes `input` for safe embedding in a javascript string literal in a
-/// standalone .js or JSON file.
+/// standalone .js file.
 ///
 /// the most minimal javascript encoder — does not encode `/` or `&` since
 /// there is no HTML context. **not safe for any HTML-embedded context.**
 ///
+/// **not a JSON encoder.** it emits `\'` for single quotes and `\xHH` for
+/// control characters, neither of which JSON permits. use
+/// [`for_json`](crate::for_json) for JSON string values.
+///
 /// # examples
 ///
 /// ```
-/// use contextual_encoder::for_javascript_source;
+/// use contextual_encoder::{for_javascript_source, for_json};
 ///
 /// assert_eq!(for_javascript_source("a/b&c"), "a/b&c");
 /// assert_eq!(for_javascript_source("line\nbreak"), r"line\nbreak");
+///
+/// assert_eq!(for_javascript_source("it's"), r"it\'s");
+/// assert_eq!(for_json("it's"), "it's");
 /// ```
 pub fn for_javascript_source(input: &str) -> String {
     encode_js(input, &JS_SOURCE)
