@@ -271,7 +271,7 @@ mod javascript {
 
     #[test]
     fn backtick_not_encoded() {
-        // documented: backtick is NOT encoded — template literals are unsafe
+        // documented: backtick is not encoded; template literals are unsafe
         assert_eq!(for_javascript("`template`"), "`template`");
     }
 
@@ -349,7 +349,7 @@ mod js_template {
 
     #[test]
     fn nested_interpolation() {
-        // ${${...}} — both $ should be escaped
+        // ${${...}}: both $ should be escaped
         assert_eq!(for_js_template("${${x}}"), r"\${\${x}}");
     }
 
@@ -383,7 +383,7 @@ mod js_template {
     fn backslash_escaped() {
         assert_eq!(for_js_template(r"\"), r"\\");
         assert_eq!(for_js_template(r"\\"), r"\\\\");
-        // backslash before backtick — both are encoded
+        // backslash before backtick: both are encoded
         assert_eq!(for_js_template("\\`"), "\\\\\\`");
     }
 
@@ -616,7 +616,7 @@ mod css {
         // boundary values
         assert_eq!(for_css_string("\u{0080}"), r"\80");
         assert_eq!(for_css_string("\u{009F}"), r"\9f");
-        // NEL (U+0085) — can affect CSS parsing
+        // NEL (U+0085) can affect CSS parsing
         assert_eq!(for_css_string("\u{0085}"), r"\85");
     }
 
@@ -653,7 +653,7 @@ mod css {
 
     #[test]
     fn non_ascii_above_c1_preserved() {
-        // U+00A0 (NBSP) is right above C1 range — should NOT be encoded
+        // U+00A0 (NBSP) is right above the C1 range and must not be encoded
         assert_eq!(for_css_string("\u{00A0}"), "\u{00A0}");
         assert_eq!(for_css_string("café"), "café");
     }
@@ -1056,7 +1056,7 @@ mod uri_path {
         assert_eq!(for_uri_path("\x7F"), "%7F");
     }
 
-    // -- dot segments (not normalized — that's the caller's job) --
+    // -- dot segments (not normalized; that's the caller's job) --
 
     #[test]
     fn dot_segments_preserved() {
@@ -1319,7 +1319,7 @@ mod form_urlencoded {
 
     #[test]
     fn form_key_value_encoding() {
-        // encoding a single value — the caller constructs key=value&key=value
+        // encoding a single value; the caller constructs key=value&key=value
         assert_eq!(
             for_form_urlencoded("hello world & goodbye"),
             "hello+world+%26+goodbye"
@@ -1696,7 +1696,7 @@ mod rust_literals {
 
     #[test]
     fn string_supplementary_plane_passes_through() {
-        // unlike Java, Rust strings are UTF-8 — no surrogate pairs needed
+        // unlike Java, Rust strings are UTF-8; no surrogate pairs needed
         assert_eq!(for_rust_string("😀"), "😀");
         assert_eq!(for_rust_string("\u{10000}"), "\u{10000}");
     }
@@ -1832,7 +1832,7 @@ mod json {
 
     #[test]
     fn single_quotes_not_escaped() {
-        // JSON has no \' escape — single quotes are literal characters
+        // JSON has no \' escape; single quotes are literal characters
         assert_eq!(for_json("it's"), "it's");
         assert_eq!(for_json("'quoted'"), "'quoted'");
     }
@@ -1853,7 +1853,7 @@ mod json {
 
     #[test]
     fn c0_controls_use_unicode_not_hex() {
-        // JSON mandates \uHHHH for control escapes — \xHH is invalid JSON
+        // JSON mandates \uHHHH for control escapes; \xHH is invalid JSON
         assert_eq!(for_json("\x00"), "\\u0000");
         assert_eq!(for_json("\x01"), "\\u0001");
         assert_eq!(for_json("\x07"), "\\u0007");
@@ -1873,7 +1873,7 @@ mod json {
 
     #[test]
     fn forward_slash_escaped() {
-        // RFC 8259 §7 permits \/ — we use it to prevent </script> breakout
+        // RFC 8259 §7 permits \/; we use it to prevent </script> breakout
         assert_eq!(for_json("/"), "\\/");
         assert_eq!(for_json("a/b"), "a\\/b");
         assert_eq!(for_json("</script>"), "<\\/script>");
@@ -1896,7 +1896,7 @@ mod json {
 
     #[test]
     fn supplementary_plane_passes_through() {
-        // JSON is UTF-8 — no surrogate pairs needed
+        // JSON is UTF-8; no surrogate pairs needed
         assert_eq!(for_json("😀"), "😀");
         assert_eq!(for_json("\u{10000}"), "\u{10000}");
     }
@@ -2106,7 +2106,7 @@ mod sql {
 
     #[test]
     fn backslash_injection_via_backslash() {
-        // attacker tries \' to escape the closing quote — both get escaped
+        // attacker tries \' to escape the closing quote; both get escaped
         assert_eq!(for_sql_backslash("\\'"), r"\\\'");
     }
 

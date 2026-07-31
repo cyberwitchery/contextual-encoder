@@ -2,7 +2,7 @@
 //!
 //! encodes untrusted strings for safe embedding in JSON string values.
 //!
-//! - [`for_json`] — safe for JSON string contexts
+//! - [`for_json`]: safe for JSON string contexts
 //!
 //! # why not `for_javascript_source`?
 //!

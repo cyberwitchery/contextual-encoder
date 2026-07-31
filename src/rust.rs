@@ -2,9 +2,9 @@
 //!
 //! encodes untrusted strings for safe embedding in rust source literals.
 //!
-//! - [`for_rust_string`] — safe for rust string literals (`"..."`)
-//! - [`for_rust_char`] — safe for rust char literals (`'...'`)
-//! - [`for_rust_byte_string`] — safe for rust byte string literals (`b"..."`)
+//! - [`for_rust_string`]: safe for rust string literals (`"..."`)
+//! - [`for_rust_char`]: safe for rust char literals (`'...'`)
+//! - [`for_rust_byte_string`]: safe for rust byte string literals (`b"..."`)
 //!
 //! # encoding rules
 //!

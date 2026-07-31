@@ -29,48 +29,48 @@ fn main() {
     println!("--- html ---");
     println!("  for_html:                     {}", for_html(input));
 
-    // html text nodes only — does NOT encode quotes, so never use in attributes
+    // html text nodes only; does not encode quotes, so never use in attributes
     println!(
         "  for_html_content:             {}",
         for_html_content(input)
     );
 
-    // quoted attribute values only — does NOT encode >, slightly more minimal
+    // quoted attribute values only; does not encode >, slightly more minimal
     println!(
         "  for_html_attribute:           {}",
         for_html_attribute(input)
     );
 
-    // unquoted attribute values — most aggressive, encodes whitespace/grave/etc.
+    // unquoted attribute values; most aggressive, encodes whitespace/grave/etc.
     println!(
         "  for_html_unquoted_attribute:  {}",
         for_html_unquoted_attribute(input)
     );
     println!();
 
-    // universal js encoder — safe in event attrs, <script> blocks, and .js files
+    // universal js encoder; safe in event attrs, <script> blocks, and .js files
     println!("--- javascript ---");
     println!("  for_javascript:               {}", for_javascript(input));
 
-    // html event attributes (onclick="...") — does not escape /
+    // html event attributes (onclick="..."); does not escape /
     println!(
         "  for_javascript_attribute:     {}",
         for_javascript_attribute(input)
     );
 
-    // <script> blocks — uses \" and \' (not safe in html attributes)
+    // <script> blocks; uses \" and \' (not safe in html attributes)
     println!(
         "  for_javascript_block:         {}",
         for_javascript_block(input)
     );
 
-    // standalone .js files — minimal, NOT safe in any html context
+    // standalone .js files; minimal, not safe in any html context
     println!(
         "  for_javascript_source:        {}",
         for_javascript_source(input)
     );
 
-    // ES6 template literals (`...`) — escapes backtick and ${} interpolation
+    // ES6 template literals (`...`); escapes backtick and ${} interpolation
     let template_input = r#"`Hello ${name}`, welcome</script>"#;
     println!(
         "  for_js_template:              {}",
@@ -82,25 +82,25 @@ fn main() {
     println!("--- css ---");
     println!("  for_css_string:               {}", for_css_string(input));
 
-    // css url() values, quoted or unquoted — like for_css_string plus space
+    // css url() values, quoted or unquoted; like for_css_string plus space
     println!("  for_css_url:                  {}", for_css_url(input));
     println!();
 
-    // uri component (query params, path segments) — NOT for full urls
+    // uri component (query params, path segments); not for full urls
     println!("--- uri ---");
     println!(
         "  for_uri_component:            {}",
         for_uri_component(input)
     );
 
-    // form-urlencoded value (WHATWG) — space→+, different safe set from RFC 3986
+    // form-urlencoded value (WHATWG); space→+, different safe set from RFC 3986
     println!(
         "  for_form_urlencoded:          {}",
         for_form_urlencoded(input)
     );
     println!();
 
-    // xml 1.0 aliases — identical to the html encoders
+    // xml 1.0 aliases, identical to the html encoders
     println!("--- xml 1.0 ---");
     println!("  for_xml:                      {}", for_xml(input));
     println!("  for_xml_content:              {}", for_xml_content(input));
@@ -114,7 +114,7 @@ fn main() {
     println!("  for_cdata:                    {}", for_cdata(input));
     println!();
 
-    // xml 1.1 — restricted chars get &#xHH; instead of space
+    // xml 1.1: restricted chars get &#xHH; instead of space
     println!("--- xml 1.1 ---");
     let xml11_input = "a\x01b<c>";
     println!("  for_xml11:                    {}", for_xml11(xml11_input));
@@ -128,7 +128,7 @@ fn main() {
     );
     println!();
 
-    // rust literals — \xHH escapes, UTF-8 byte encoding for byte strings
+    // rust literals: \xHH escapes, UTF-8 byte encoding for byte strings
     println!("--- rust ---");
     println!("  for_rust_string:              {}", for_rust_string(input));
     println!("  for_rust_char:                {}", for_rust_char(input));
@@ -138,12 +138,12 @@ fn main() {
     );
     println!();
 
-    // json string value — \\uXXXX escapes for control chars and specials
+    // json string value: \\uXXXX escapes for control chars and specials
     println!("--- json ---");
     println!("  for_json:                     {}", for_json(input));
     println!();
 
-    // sql string literals — single-quote doubling (standard) or backslash escaping (mysql)
+    // sql string literals: single-quote doubling (standard) or backslash escaping (mysql)
     println!("--- sql ---");
     println!("  for_sql:                      {}", for_sql(input));
     println!(
@@ -162,7 +162,7 @@ fn main() {
 
     println!("--- practical usage ---");
 
-    // html text node — for_html_content is the right encoder
+    // html text node; for_html_content is the right encoder
     println!(r#"  <p>{}</p>"#, for_html_content(user_name));
 
     // nested context: uri component inside an html attribute.

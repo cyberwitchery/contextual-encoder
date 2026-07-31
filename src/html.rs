@@ -2,10 +2,10 @@
 //!
 //! provides four encoding contexts with different safety guarantees:
 //!
-//! - [`for_html`] — safe for both text content and quoted attributes (most conservative)
-//! - [`for_html_content`] — safe for text content only (does not encode quotes)
-//! - [`for_html_attribute`] — safe for quoted attributes only (does not encode `>`)
-//! - [`for_html_unquoted_attribute`] — safe for unquoted attribute values (most aggressive)
+//! - [`for_html`]: safe for both text content and quoted attributes (most conservative)
+//! - [`for_html_content`]: safe for text content only (does not encode quotes)
+//! - [`for_html_attribute`]: safe for quoted attributes only (does not encode `>`)
+//! - [`for_html_unquoted_attribute`]: safe for unquoted attribute values (most aggressive)
 //!
 //! all encoders replace invalid XML characters (C0/C1 controls, DEL, unicode
 //! non-characters) with a replacement character (space or dash depending on
@@ -14,12 +14,12 @@
 //! # security notes
 //!
 //! - these encoders produce output safe for embedding in the specified context.
-//!   they do not sanitize HTML — encoding is not a substitute for input validation.
+//!   they do not sanitize HTML; encoding is not a substitute for input validation.
 //! - never use `for_html_content` output in an attribute context.
 //! - never use `for_html_attribute` output in a text content context where `>` matters.
 //! - `for_html` is the safe default when the exact context is unknown.
 //! - tag names, attribute names, and event handler names must be validated
-//!   separately — encoding cannot make arbitrary names safe.
+//!   separately; encoding cannot make arbitrary names safe.
 
 use std::fmt;
 
@@ -47,7 +47,7 @@ const HTML_ATTRIBUTE: MarkupConfig = MarkupConfig {
 
 /// encodes `input` for safe embedding in HTML text content and quoted attributes.
 ///
-/// this is the most conservative HTML encoder — it encodes characters needed
+/// this is the most conservative HTML encoder: it encodes characters needed
 /// for both text content and attribute contexts. use [`for_html_content`] or
 /// [`for_html_attribute`] for more minimal encoding when the exact context is
 /// known.
@@ -108,7 +108,7 @@ pub fn write_html<W: fmt::Write>(out: &mut W, input: &str) -> fmt::Result {
 /// use contextual_encoder::for_html_content;
 ///
 /// assert_eq!(for_html_content("1 < 2 & 3 > 0"), "1 &lt; 2 &amp; 3 &gt; 0");
-/// // quotes are NOT encoded — do not use in attributes
+/// // quotes are not encoded; do not use in attributes
 /// assert_eq!(for_html_content(r#"she said "hi""#), r#"she said "hi""#);
 /// ```
 pub fn for_html_content(input: &str) -> String {
@@ -130,7 +130,7 @@ pub fn write_html_content<W: fmt::Write>(out: &mut W, input: &str) -> fmt::Resul
 /// and is slightly more minimal than [`for_html`]. it encodes both `"` and
 /// `'` so the output is safe regardless of which quote delimiter is used.
 ///
-/// **not safe for unquoted attributes** — use [`for_html_unquoted_attribute`]
+/// not safe for unquoted attributes; use [`for_html_unquoted_attribute`]
 /// for that context.
 ///
 /// # encoded characters

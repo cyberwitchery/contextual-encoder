@@ -2,20 +2,20 @@
 //!
 //! provides five encoding contexts:
 //!
-//! - [`for_javascript`] — universal encoder, safe in HTML attributes, script
+//! - [`for_javascript`]: universal encoder, safe in HTML attributes, script
 //!   blocks, and standalone .js files
-//! - [`for_javascript_attribute`] — optimized for HTML event attributes
+//! - [`for_javascript_attribute`]: optimized for HTML event attributes
 //!   (e.g., `onclick="..."`)
-//! - [`for_javascript_block`] — optimized for `<script>` blocks
-//! - [`for_javascript_source`] — optimized for standalone .js files
-//! - [`for_js_template`] — for ES6 template literal content (`` `...` ``)
+//! - [`for_javascript_block`]: optimized for `<script>` blocks
+//! - [`for_javascript_source`]: optimized for standalone .js files
+//! - [`for_js_template`]: for ES6 template literal content (`` `...` ``)
 //!
 //! # security notes
 //!
 //! - the string literal encoders ([`for_javascript`], [`for_javascript_attribute`],
 //!   [`for_javascript_block`], [`for_javascript_source`]) do **not** encode the
 //!   grave accent (`` ` ``). do not use them to embed data inside template
-//!   literals — use [`for_js_template`] instead.
+//!   literals; use [`for_js_template`] instead.
 //! - these encoders are for string/template literal contexts only. they cannot
 //!   make arbitrary javascript expressions, variable names, or property
 //!   accessors safe.
@@ -23,7 +23,7 @@
 //!   for quotes (`\"`, `\'`) which are **not safe in HTML attribute contexts**.
 //! - `for_javascript_attribute` does not escape `/` and is **not safe in
 //!   `<script>` blocks** where `</script>` could appear.
-//! - none of these encoders produce valid JSON — the `\xHH` escapes they emit
+//! - none of these encoders produce valid JSON: the `\xHH` escapes they emit
 //!   for control characters are not permitted in JSON. use
 //!   [`for_json`](crate::for_json) for JSON string values.
 
@@ -69,7 +69,7 @@ const JS_SOURCE: JsConfig = JsConfig {
 
 /// encodes `input` for safe embedding in a javascript string literal.
 ///
-/// this is the universal javascript encoder — its output is safe in HTML
+/// this is the universal javascript encoder; its output is safe in HTML
 /// event attributes, `<script>` blocks, and standalone .js files. it is
 /// slightly more conservative than the context-specific encoders.
 ///
@@ -89,10 +89,10 @@ const JS_SOURCE: JsConfig = JsConfig {
 /// embed untrusted data directly inside template literals. instead:
 ///
 /// ```js
-/// // WRONG — vulnerable to XSS:
+/// // wrong, vulnerable to XSS:
 /// // `Hello ${unsafeInput}`
 /// //
-/// // RIGHT — encode into a variable first:
+/// // right, encoding into a variable first:
 /// // var x = '<encoded>';
 /// // `Hello ${x}`
 /// ```
@@ -123,7 +123,7 @@ pub fn write_javascript<W: fmt::Write>(out: &mut W, input: &str) -> fmt::Result 
 /// identical to [`for_javascript`] except `/` is **not** escaped (not
 /// needed in event attributes where `</script>` is not a concern).
 ///
-/// **not safe in `<script>` blocks** — use [`for_javascript`] or
+/// not safe in `<script>` blocks; use [`for_javascript`] or
 /// [`for_javascript_block`] instead.
 ///
 /// # examples
@@ -174,8 +174,8 @@ pub fn write_javascript_block<W: fmt::Write>(out: &mut W, input: &str) -> fmt::R
 /// encodes `input` for safe embedding in a javascript string literal in a
 /// standalone .js file.
 ///
-/// the most minimal javascript encoder — does not encode `/` or `&` since
-/// there is no HTML context. **not safe for any HTML-embedded context.**
+/// the most minimal javascript encoder; does not encode `/` or `&` since
+/// there is no HTML context. not safe for any HTML-embedded context.
 ///
 /// **not a JSON encoder.** it emits `\'` for single quotes and `\xHH` for
 /// control characters, neither of which JSON permits. use

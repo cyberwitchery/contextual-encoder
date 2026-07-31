@@ -2,8 +2,8 @@
 //!
 //! provides two encoding contexts:
 //!
-//! - [`for_css_string`] — safe for CSS string values (inside quotes)
-//! - [`for_css_url`] — safe for CSS `url()` values, quoted or unquoted
+//! - [`for_css_string`]: safe for CSS string values (inside quotes)
+//! - [`for_css_url`]: safe for CSS `url()` values, quoted or unquoted
 //!
 //! both use CSS hex escape syntax (`\XX`) with a trailing space appended
 //! when the next character could be misinterpreted as part of the hex value.
@@ -13,7 +13,7 @@
 //! - CSS string values **must** be quoted. these encoders produce output safe
 //!   inside `"..."` or `'...'` delimiters.
 //! - these encoders do not validate CSS property names, selectors, or
-//!   expressions. encoding cannot make arbitrary CSS safe — validate the
+//!   expressions. encoding cannot make arbitrary CSS safe; validate the
 //!   structure separately.
 //! - for `url()` values, the URL itself must be validated (scheme whitelist,
 //!   etc.) before encoding. encoding only prevents syntax breakout.

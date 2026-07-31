@@ -94,7 +94,7 @@ pub fn write_uri_path<W: fmt::Write>(out: &mut W, input: &str) -> fmt::Result {
 /// percent-encoded as UTF-8 bytes.
 ///
 /// this encodes a single form **value** (or name). it does not insert `=`
-/// or `&` delimiters — the caller constructs the `key=value&key=value`
+/// or `&` delimiters; the caller constructs the `key=value&key=value`
 /// structure using already-encoded parts.
 ///
 /// # differences from [`for_uri_component`]

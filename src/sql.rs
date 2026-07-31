@@ -2,8 +2,8 @@
 //!
 //! encodes untrusted strings for safe embedding in SQL string literals.
 //!
-//! - [`for_sql`] — safe for standard SQL string literals (`'...'`)
-//! - [`for_sql_backslash`] — safe for MySQL/MariaDB string literals with
+//! - [`for_sql`]: safe for standard SQL string literals (`'...'`)
+//! - [`for_sql_backslash`]: safe for MySQL/MariaDB string literals with
 //!   backslash escaping enabled (`'...'`)
 //!
 //! # encoding rules
@@ -18,7 +18,7 @@
 //! | NUL (`\0`) | removed |
 //! | unicode non-characters | space |
 //!
-//! all other characters (including backslash) pass through unchanged — they
+//! all other characters (including backslash) pass through unchanged; they
 //! have no special meaning in standard SQL string literals.
 //!
 //! ## MySQL/MariaDB backslash escaping (`for_sql_backslash`)
@@ -48,7 +48,7 @@
 //!   `for_sql_backslash` for MySQL/MariaDB when `NO_BACKSLASH_ESCAPES` is
 //!   not enabled.
 //! - **do not use `for_sql` with MySQL** unless `NO_BACKSLASH_ESCAPES` is
-//!   set — a backslash can be used to escape the closing quote.
+//!   set: a backslash can be used to escape the closing quote.
 
 use std::fmt;
 
@@ -201,7 +201,7 @@ mod tests {
 
     #[test]
     fn sql_control_chars_pass_through() {
-        // standard SQL has no escape sequences for control characters —
+        // standard SQL has no escape sequences for control characters;
         // they are valid string content
         assert_eq!(for_sql("\t"), "\t");
         assert_eq!(for_sql("\n"), "\n");
@@ -315,7 +315,7 @@ mod tests {
 
     #[test]
     fn backslash_injection_via_backslash() {
-        // attacker tries: \' to escape the quote — both get escaped
+        // attacker tries \' to escape the quote; both get escaped
         assert_eq!(for_sql_backslash("\\'"), r"\\\'");
     }
 

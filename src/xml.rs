@@ -4,20 +4,20 @@
 //!
 //! ## XML 1.0 aliases
 //!
-//! - [`for_xml`] — alias for [`crate::for_html`]
-//! - [`for_xml_content`] — alias for [`crate::for_html_content`]
-//! - [`for_xml_attribute`] — alias for [`crate::for_html_attribute`]
+//! - [`for_xml`]: alias for [`crate::for_html`]
+//! - [`for_xml_content`]: alias for [`crate::for_html_content`]
+//! - [`for_xml_attribute`]: alias for [`crate::for_html_attribute`]
 //!
 //! ## XML-only contexts
 //!
-//! - [`for_xml_comment`] — safe for XML comment content
-//! - [`for_cdata`] — safe for CDATA section content
+//! - [`for_xml_comment`]: safe for XML comment content
+//! - [`for_cdata`]: safe for CDATA section content
 //!
 //! ## XML 1.1
 //!
-//! - [`for_xml11`] — XML 1.1 content + attributes
-//! - [`for_xml11_content`] — XML 1.1 content only
-//! - [`for_xml11_attribute`] — XML 1.1 attributes only
+//! - [`for_xml11`]: XML 1.1 content + attributes
+//! - [`for_xml11_content`]: XML 1.1 content only
+//! - [`for_xml11_attribute`]: XML 1.1 attributes only
 //!
 //! # security notes
 //!
@@ -35,7 +35,7 @@ use crate::engine::{
 
 /// encodes `input` for safe embedding in XML text content and quoted attributes.
 ///
-/// this is an alias for [`crate::for_html`] — the encoding rules are identical.
+/// this is an alias for [`crate::for_html`]; the encoding rules are identical.
 ///
 /// # examples
 ///
@@ -57,7 +57,7 @@ pub fn write_xml<W: fmt::Write>(out: &mut W, input: &str) -> fmt::Result {
 
 /// encodes `input` for safe embedding in XML text content only.
 ///
-/// this is an alias for [`crate::for_html_content`] — the encoding rules are
+/// this is an alias for [`crate::for_html_content`]; the encoding rules are
 /// identical. **not safe for attributes** (does not encode quotes).
 ///
 /// # examples
@@ -80,7 +80,7 @@ pub fn write_xml_content<W: fmt::Write>(out: &mut W, input: &str) -> fmt::Result
 
 /// encodes `input` for safe embedding in a quoted XML attribute value.
 ///
-/// this is an alias for [`crate::for_html_attribute`] — the encoding rules
+/// this is an alias for [`crate::for_html_attribute`]; the encoding rules
 /// are identical. **not safe for text content** (does not encode `>`).
 ///
 /// # examples
@@ -270,7 +270,7 @@ pub fn write_xml11<W: fmt::Write>(out: &mut W, input: &str) -> fmt::Result {
 /// encodes `input` for safe embedding in XML 1.1 text content only.
 ///
 /// like [`for_xml_content`] but encodes restricted characters as `&#xHH;`
-/// character references. does **not** encode quotes — not safe for attributes.
+/// character references. does not encode quotes; not safe for attributes.
 ///
 /// # examples
 ///

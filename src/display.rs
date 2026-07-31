@@ -3,7 +3,7 @@
 //!
 //! every `for_*` function allocates a `String`. when embedding encoded output
 //! in a larger format string (e.g., `format!("<p>{}</p>", for_html(s))`), the
-//! intermediate string is immediately consumed and discarded — a wasted
+//! intermediate string is immediately consumed and discarded, a wasted
 //! allocation.
 //!
 //! the `display_*` functions return lightweight wrappers that implement

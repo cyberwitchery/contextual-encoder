@@ -33,7 +33,7 @@ see [examples](#examples) for the other contexts, or run
 ## what this is not
 
 - **not a sanitizer.** encoding `<script>` as `&lt;script&gt;` makes it
-  display safely — it does not remove it. if you need to allow a subset of
+  display safely; it does not remove it. if you need to allow a subset of
   HTML, use a dedicated sanitizer.
 - **not a validator.** tag names, attribute names, event handler names, and
   URL schemes must be validated separately. encoding cannot make arbitrary
@@ -48,7 +48,7 @@ see [examples](#examples) for the other contexts, or run
 
 | function | safe for | notes |
 |----------|----------|-------|
-| `for_html` | text content + quoted attributes | most conservative — safe default |
+| `for_html` | text content + quoted attributes | most conservative; the safe default |
 | `for_html_content` | text content only | does not encode quotes |
 | `for_html_attribute` | quoted attributes only | does not encode `>` |
 | `for_html_unquoted_attribute` | unquoted attribute values | most aggressive |
@@ -78,7 +78,7 @@ see [examples](#examples) for the other contexts, or run
 | `for_javascript` | general JS string contexts | caller supplies quotes; hex-encodes quotes for HTML safety |
 | `for_javascript_attribute` | HTML event attributes | does not escape `/` |
 | `for_javascript_block` | `<script>` blocks | uses backslash quote escapes |
-| `for_javascript_source` | standalone .js files | minimal encoding; not valid JSON — use `for_json` |
+| `for_javascript_source` | standalone .js files | minimal encoding; not valid JSON, use `for_json` |
 | `for_js_template` | ES6 template literal content | escapes `` ` `` and `${` |
 
 ### CSS
@@ -86,7 +86,7 @@ see [examples](#examples) for the other contexts, or run
 | function | safe for | notes |
 |----------|----------|-------|
 | `for_css_string` | quoted CSS string values | hex escapes with separator spaces |
-| `for_css_url` | CSS `url()` values, quoted or unquoted | like `for_css_string` plus space — output is always one url-token |
+| `for_css_url` | CSS `url()` values, quoted or unquoted | like `for_css_string` plus space; output is always one url-token |
 
 ### URI
 
@@ -124,17 +124,17 @@ untrusted strings for safe embedding in source code literals.
 
 ## unsupported / dangerous contexts
 
-the following contexts are **intentionally not supported** because encoding
+the following contexts are intentionally not supported because encoding
 cannot make them safe:
 
-- **raw tag names** — validate against a whitelist
-- **raw attribute names** — validate against a whitelist
-- **event handler names** — validate against a whitelist
-- **raw JavaScript expressions** — no encoder can make `eval()` safe
-- **raw CSS selectors / properties** — validate structure separately
-- **HTML comments** — vendor-specific extensions (e.g., IE conditional
+- **raw tag names**: validate against a whitelist
+- **raw attribute names**: validate against a whitelist
+- **event handler names**: validate against a whitelist
+- **raw JavaScript expressions**: no encoder can make `eval()` safe
+- **raw CSS selectors / properties**: validate structure separately
+- **HTML comments**: vendor-specific extensions (e.g., IE conditional
   comments) make safe encoding impractical
-- **full untrusted URLs** — `for_uri_component` encodes a component, not a
+- **full untrusted URLs**: `for_uri_component` encodes a component, not a
   full URL. to embed an untrusted URL, validate its scheme and structure
   first, then encode for the final sink
 
@@ -178,7 +178,7 @@ assert_eq!(buf, "safe &amp; sound");
 
 ## security model
 
-this is a **contextual output encoder**, not a sanitizer. it prevents
+this is a contextual output encoder, not a sanitizer. it prevents
 cross-site scripting by encoding output for specific contexts.
 
 ### caveats
@@ -190,17 +190,17 @@ character, so this is not a complete fix. the safest mitigation is to avoid
 unquoted attributes entirely.
 
 **template literals:** the string literal JavaScript encoders (`for_javascript`,
-`for_javascript_attribute`, etc.) do **not** encode backticks. to embed
+`for_javascript_attribute`, etc.) do not encode backticks. to embed
 untrusted data directly inside an ES6 template literal, use `for_js_template`:
 
 ```js
-// WRONG — vulnerable:
+// wrong, vulnerable:
 // `Hello ${unsafeInput}`
 
-// RIGHT — use the template literal encoder:
+// right, the template literal encoder:
 `Hello ${for_js_template(unsafeInput)}`
 
-// ALSO RIGHT — encode into a variable first:
+// also right, encoding into a variable first:
 var x = '<contextual_encoder::for_javascript output>';
 `Hello ${x}`
 ```
@@ -212,7 +212,7 @@ encode for the final sink (for example, an HTML attribute).
 **HTML comments:** no HTML comment encoder is provided. HTML comments have
 vendor-specific extensions (e.g., `<!--[if IE]>`) that make safe encoding
 impractical. never embed untrusted data in HTML comments. `for_xml_comment`
-is for XML comments only — it is **not safe for HTML comments**.
+is for XML comments only; it is not safe for HTML comments.
 
 ## relationship to OWASP Java Encoder
 
@@ -234,7 +234,7 @@ specific to this crate.
   valid UTF-8, so surrogates cannot appear. supplementary plane characters
   (U+10000+) are valid and pass through or are encoded normally.
 - **`for_html` uses `&#34;` and `&#39;`** for quote encoding rather than
-  `&quot;` — both are valid HTML and the numeric form is shorter.
+  `&quot;`; both are valid HTML and the numeric form is shorter.
 - **`-` (hyphen) in JavaScript:** the Java encoder may escape `-` as `\-` in
   some JavaScript contexts to prevent `-->` sequences. this crate does not
   encode `-` in JavaScript. the `-->` sequence inside a JS string literal is

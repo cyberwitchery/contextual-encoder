@@ -9,32 +9,32 @@
   the next `)` in the stylesheet. the output is now always exactly one
   url-token, which makes `for_css_url` a superset of `for_css_string` rather
   than a relaxation of it, and safe inside `url("...")` as well as `url(...)`
-- URLs that genuinely contain parentheses or spaces still resolve — the CSS
+- URLs that genuinely contain parentheses or spaces still resolve; the CSS
   parser unescapes `\28`, `\29` and `\20` back to the original characters
   before the URL is used
 
 ## [0.6.0] - 2026-07-05
 
-- form-urlencoded encoder: `for_form_urlencoded`, `write_form_urlencoded`, `display_form_urlencoded` — percent-encodes values per the WHATWG URL Standard `application/x-www-form-urlencoded` byte serializer (space → `+`, `*-._` and alphanumerics pass through, everything else percent-encoded)
+- form-urlencoded encoder: `for_form_urlencoded`, `write_form_urlencoded`, `display_form_urlencoded`: percent-encodes values per the WHATWG URL Standard `application/x-www-form-urlencoded` byte serializer (space → `+`, `*-._` and alphanumerics pass through, everything else percent-encoded)
 
 ## [0.5.0] - 2026-06-19
 
-- **breaking:** removed the Java, Go, Ruby, and Python literal encoders (`for_java`, `for_go_string`, `for_go_char`, `for_go_byte_string`, `for_ruby_string`, `for_python_string`, `for_python_bytes`, `for_python_raw_string`, and their `write_*`/`display_*` variants) — out of scope for this crate
-- URI path encoder: `for_uri_path`, `write_uri_path`, `display_uri_path` — percent-encodes untrusted input for URI paths per RFC 3986 section 3.3, preserving forward-slash separators while encoding all non-unreserved characters
+- **breaking:** removed the Java, Go, Ruby, and Python literal encoders (`for_java`, `for_go_string`, `for_go_char`, `for_go_byte_string`, `for_ruby_string`, `for_python_string`, `for_python_bytes`, `for_python_raw_string`, and their `write_*`/`display_*` variants) as out of scope for this crate
+- URI path encoder: `for_uri_path`, `write_uri_path`, `display_uri_path`: percent-encodes untrusted input for URI paths per RFC 3986 section 3.3, preserving forward-slash separators while encoding all non-unreserved characters
 
 ## [0.4.0] - 2026-06-08
 
-- `display_*` wrappers for all encoding contexts — zero-allocation `fmt::Display` types that delegate to the corresponding `write_*` function, enabling inline formatting via `format!`/`write!` without intermediate `String` allocation
+- `display_*` wrappers for all encoding contexts: zero-allocation `fmt::Display` types that delegate to the corresponding `write_*` function, enabling inline formatting via `format!`/`write!` without intermediate `String` allocation
 
 ## [0.3.0] - 2026-04-26
 
-- Ruby string literal encoder: `for_ruby_string` — escapes quotes, hash signs (interpolation prevention), and control characters for safe embedding in double-quoted Ruby strings
+- Ruby string literal encoder: `for_ruby_string`, escaping quotes, hash signs (interpolation prevention), and control characters for safe embedding in double-quoted Ruby strings
 - writer-based variant for Ruby encoder
-- CSS encoders (`for_css_string`, `for_css_url`) now encode C1 control characters (U+0080-U+009F), matching OWASP Java Encoder behaviour — U+0085 NEL in particular can affect CSS parsing
-- ES6 template literal encoder: `for_js_template` — escapes backticks and `${` interpolation markers for safe embedding inside template literals
+- CSS encoders (`for_css_string`, `for_css_url`) now encode C1 control characters (U+0080-U+009F), matching OWASP Java Encoder behaviour; U+0085 NEL in particular can affect CSS parsing
+- ES6 template literal encoder: `for_js_template`, escaping backticks and `${` interpolation markers for safe embedding inside template literals
 - writer-based variant for template literal encoder
 - **breaking:** `for_json` now escapes forward slash (`/`) as `\/` to prevent `</script>` breakout when JSON is embedded in HTML `<script>` blocks (RFC 8259 §7 permits `\/`)
-- JSON string encoder: `for_json` — distinct from JavaScript encoders (no `\'`, uses `\u00HH` instead of `\xHH`, mandatory U+2028/U+2029 encoding)
+- JSON string encoder: `for_json`, distinct from JavaScript encoders (no `\'`, uses `\u00HH` instead of `\xHH`, mandatory U+2028/U+2029 encoding)
 - writer-based variant for JSON encoder
 - SQL string literal encoders: `for_sql` (standard double-quote escaping), `for_sql_backslash` (MySQL/MariaDB backslash escaping)
 - writer-based variants for all SQL encoders

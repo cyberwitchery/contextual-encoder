@@ -70,7 +70,7 @@ pub(crate) fn is_invalid_for_xml(c: char) -> bool {
 /// unlike [`is_invalid_for_xml`], the C1 controls are split: NEL (U+0085) is
 /// **not** restricted in XML 1.1 and passes through unchanged, while the rest
 /// of the range is. covers:
-/// - NUL (U+0000) — invalid (not in the Char production)
+/// - NUL (U+0000): invalid (not in the Char production)
 /// - U+0001-U+0008, U+000B-U+000C, U+000E-U+001F (restricted C0 controls)
 /// - U+007F-U+0084, U+0086-U+009F (DEL and restricted C1 controls, except NEL)
 /// - unicode non-characters
@@ -88,7 +88,7 @@ pub(crate) fn is_xml11_restricted_or_invalid(c: char) -> bool {
 
 /// how a markup encoder renders characters that are invalid or restricted for
 /// its XML version. this is the only axis on which the HTML and XML 1.1 markup
-/// families differ — the entity table and per-context masks are shared.
+/// families differ; the entity table and per-context masks are shared.
 #[derive(Clone, Copy)]
 pub(crate) enum InvalidCharPolicy {
     /// HTML / XML 1.0: every invalid character becomes a single space.

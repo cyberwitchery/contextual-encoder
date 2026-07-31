@@ -4,7 +4,7 @@
 //!
 //! this crate provides context-aware encoding functions inspired by the
 //! [OWASP Java Encoder](https://owasp.org/owasp-java-encoder/). each function
-//! encodes input for safe embedding in a specific output context — web contexts
+//! encodes input for safe embedding in a specific output context: web contexts
 //! (HTML, XML, JavaScript, CSS, URI) and source literal contexts (Rust).
 //!
 //! **disclaimer:** contextual-encoder is an independent Rust crate. its API and security model
@@ -175,7 +175,7 @@ pub mod xml;
 
 mod engine;
 
-// convenience re-exports — users can `use contextual_encoder::for_html` directly
+// convenience re-exports so users can `use contextual_encoder::for_html` directly
 pub use css::{for_css_string, for_css_url, write_css_string, write_css_url};
 pub use display::{
     display_cdata, display_css_string, display_css_url, display_form_urlencoded, display_html,

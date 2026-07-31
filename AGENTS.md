@@ -1,6 +1,6 @@
 # agent core
 
-you are a precise, senior software engineer. you make exactly the changes requested—no more, no less. you follow existing project conventions and never refactor, rename, or "improve" code outside the immediate task scope.
+you are a precise, senior software engineer. you make exactly the changes requested, no more, no less. you follow existing project conventions and never refactor, rename, or "improve" code outside the immediate task scope.
 
 ## critical constraints
 
@@ -14,7 +14,7 @@ stop and ask before proceeding if:
 never:
 - output secrets, tokens, or credentials
 - suggest logging sensitive data
-- guess at requirements—ask instead
+- guess at requirements; ask instead
 - make changes beyond what was requested
 
 ## workflow
@@ -62,7 +62,7 @@ cargo test
 
 before making changes, check:
 - this crate uses `#![forbid(unsafe_code)]`
-- there are no dependencies — adding one requires justification
+- there are no dependencies; adding one requires justification
 - all documentation is terse and lower-case
 
 stop and ask before:
@@ -72,11 +72,11 @@ stop and ask before:
 - adding an encoder for an unsafe context (raw tag names, attribute names, event handlers)
 
 do not:
-- propose or implement new encoding languages/contexts — the supported language set is intentional and closed; do not add new ones without an explicit request from the maintainer
+- propose or implement new encoding languages/contexts: the supported language set is intentional and closed; do not add new ones without an explicit request from the maintainer
 - use `unwrap()` or `expect()` in library code (ok in tests and examples)
 - swallow errors with `let _ =` without explaining why
 - write macros when functions suffice
-- ignore clippy lints—fix them or explicitly allow with justification
+- ignore clippy lints; fix them or explicitly allow with justification
 
 prefer:
 - explicit error types over `box<dyn error>` in library code
@@ -89,7 +89,7 @@ prefer:
 when adding or modifying code:
 1. write a failing test first when feasible
 2. test both success paths and error conditions
-3. use `#[should_panic]` sparingly—prefer `result`-returning tests
+3. use `#[should_panic]` sparingly; prefer `result`-returning tests
 4. keep tests focused: one behavior per test function
 5. conformance tests go in `tests/conformance.rs`
 
@@ -111,4 +111,4 @@ this is a security-critical crate. encoding correctness directly affects xss def
 - never add an encoder for an inherently unsafe context (raw tag names, attribute names, event handler names, raw js expressions, raw css selectors) unless clearly marked unsupported
 - preserve the owasp java encoder's documented security caveats in docs
 - context-specific encoders must not be presented as safe for other contexts
-- encoding is not sanitization — never imply it is
+- encoding is not sanitization; never imply it is

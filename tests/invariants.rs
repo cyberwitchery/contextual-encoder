@@ -27,7 +27,7 @@ type ForFn = fn(&str) -> String;
 /// signature shared by every `write_*` encoder (monomorphised to `String`).
 type WriteFn = fn(&mut String, &str) -> fmt::Result;
 
-/// every unicode scalar value (surrogates excluded — they are not `char`s).
+/// every unicode scalar value (surrogates excluded; they are not `char`s).
 fn scalars() -> impl Iterator<Item = char> {
     (0..=0x10FFFF).filter_map(char::from_u32)
 }
@@ -364,7 +364,7 @@ fn entity_len(s: &str) -> Option<usize> {
     }
 }
 
-/// true if every `&` in `s` introduces a valid entity — i.e. no raw ampersand
+/// true if every `&` in `s` introduces a valid entity, i.e. no raw ampersand
 /// leaked through unencoded.
 fn ampersands_are_entities(s: &str) -> bool {
     let bytes = s.as_bytes();
@@ -404,7 +404,7 @@ fn assert_markup_safe(
 
 #[test]
 fn safety_html_family() {
-    // for_html / for_xml: text + attribute context — encodes < > " ' and &
+    // for_html / for_xml: text + attribute context; encodes < > " ' and &
     assert_markup_safe("for_html", for_html, |c| {
         matches!(c, '<' | '>' | '"' | '\'') || is_invalid_for_xml(c)
     });
@@ -412,7 +412,7 @@ fn safety_html_family() {
         matches!(c, '<' | '>' | '"' | '\'') || is_invalid_for_xml(c)
     });
 
-    // content context — does not encode quotes
+    // content context; does not encode quotes
     assert_markup_safe("for_html_content", for_html_content, |c| {
         matches!(c, '<' | '>') || is_invalid_for_xml(c)
     });
@@ -420,7 +420,7 @@ fn safety_html_family() {
         matches!(c, '<' | '>') || is_invalid_for_xml(c)
     });
 
-    // attribute context — does not encode '>'
+    // attribute context; does not encode '>'
     assert_markup_safe("for_html_attribute", for_html_attribute, |c| {
         matches!(c, '<' | '"' | '\'') || is_invalid_for_xml(c)
     });
@@ -428,7 +428,7 @@ fn safety_html_family() {
         matches!(c, '<' | '"' | '\'') || is_invalid_for_xml(c)
     });
 
-    // unquoted attribute — the most aggressive: whitespace, delimiters, and
+    // unquoted attribute, the most aggressive: whitespace, delimiters, and
     // controls (which become '-') must never appear raw
     assert_markup_safe(
         "for_html_unquoted_attribute",
@@ -447,7 +447,7 @@ fn safety_html_family() {
         },
     );
 
-    // xml 1.1 — restricted controls become &#xHH; (not space); NEL passes
+    // xml 1.1: restricted controls become &#xHH; (not space); NEL passes
     assert_markup_safe("for_xml11", for_xml11, |c| {
         matches!(c, '<' | '>' | '"' | '\'') || is_xml11_restricted(c)
     });
@@ -460,7 +460,7 @@ fn safety_html_family() {
 }
 
 /// true if the char is a dangerous CSS char that must be hex-escaped, excluding
-/// backslash (which legitimately appears as the escape introducer) — see
+/// backslash (which legitimately appears as the escape introducer); see
 /// `css_backslashes_escaped` for that half of the invariant.
 fn css_forbidden_raw(c: char) -> bool {
     let cp = c as u32;
@@ -536,7 +536,7 @@ fn css_preprocess(input: &str) -> Vec<char> {
     out
 }
 
-/// §4.2: whitespace is newline, tab and space — no other unicode space counts.
+/// §4.2: whitespace is newline, tab and space; no other unicode space counts.
 fn is_css_whitespace(c: char) -> bool {
     matches!(c, '\n' | '\t' | ' ')
 }
@@ -808,7 +808,7 @@ fn css_url_encodes_a_superset_of_css_string() {
     }
 }
 
-/// true if every maximal run of single quotes has even length — i.e. every
+/// true if every maximal run of single quotes has even length, i.e. every
 /// logical quote was doubled (`'` -> `''`), so none is left unescaped.
 fn sql_quotes_doubled(s: &str) -> bool {
     let mut run = 0usize;
@@ -881,7 +881,7 @@ fn safety_sql() {
 /// true if the cdata output cannot break out of a CDATA section: the split
 /// technique deliberately emits `]]>`, but always immediately re-opens with
 /// `<![CDATA[`. so every `]]>` must be followed by `<![CDATA[`. (the naive
-/// "output contains no `]]>`" is false — see `for_cdata("a]]>b")`.)
+/// "output contains no `]]>`" is false; see `for_cdata("a]]>b")`.)
 fn cdata_cannot_break_out(s: &str) -> bool {
     let bytes = s.as_bytes();
     for (i, w) in bytes.windows(3).enumerate() {
