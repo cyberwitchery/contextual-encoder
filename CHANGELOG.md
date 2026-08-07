@@ -1,6 +1,6 @@
 # changelog
 
-## Unreleased
+## [0.7.0] - 2026-08-08
 
 - **breaking:** `for_css_url` now hex-escapes `(`, `)` and space (#49). a `)` in
   an unquoted `url()` value could previously close the URL token and the
