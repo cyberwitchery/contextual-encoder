@@ -76,10 +76,16 @@ see [examples](#examples) for the other contexts, or run
 | function | safe for | notes |
 |----------|----------|-------|
 | `for_javascript` | general JS string contexts | caller supplies quotes; hex-encodes quotes for HTML safety |
-| `for_javascript_attribute` | HTML event attributes | does not escape `/` |
+| `for_javascript_attribute` | HTML event attributes | does not escape `<` or `/` |
 | `for_javascript_block` | `<script>` blocks | uses backslash quote escapes |
 | `for_javascript_source` | standalone .js files | minimal encoding; not valid JSON — use `for_json` |
 | `for_js_template` | ES6 template literal content | escapes `` ` `` and `${` |
+
+the `<script>`-block encoders (`for_javascript`, `for_javascript_block`,
+`for_js_template`) escape `<` as `\x3c` as well as `/` as `\/`. escaping `/`
+alone stops a literal `</script>`, but not `<!--<script>`, which walks the
+HTML tokenizer into script-data-double-escaped state — where the block's real
+`</script>` no longer closes it.
 
 ### CSS
 
@@ -105,7 +111,7 @@ untrusted strings for safe embedding in source code literals.
 
 | function | safe for | notes |
 |----------|----------|-------|
-| `for_json` | JSON string values | `\uHHHH` escapes (no `\xHH`), escapes `/` and U+2028/U+2029 for `<script>` safety |
+| `for_json` | JSON string values | `\uHHHH` escapes (no `\xHH`), escapes `<`, `/` and U+2028/U+2029 for `<script>` safety |
 
 #### Rust
 
@@ -151,8 +157,8 @@ assert_eq!(safe, "&lt;script&gt;alert(&#39;xss&#39;)&lt;/script&gt;");
 
 // JavaScript string literal
 let safe = for_javascript(user_input);
-// quotes are hex-encoded, / is escaped to prevent </script>
-assert!(safe.contains(r"<\/script>"));
+// quotes are hex-encoded, < and / are escaped to keep </script> closing
+assert!(safe.contains(r"\x3c\/script>"));
 
 // CSS string value
 let safe = for_css_string(user_input);

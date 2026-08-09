@@ -1,5 +1,21 @@
 # changelog
 
+## Unreleased
+
+- **breaking:** the `<script>`-block encoders — `for_javascript`,
+  `for_javascript_block` and `for_js_template` — now escape `<` as `\x3c`, and
+  `for_json` escapes it as `\u003c`. escaping `/` stopped a literal
+  `</script>`, but not `<!--<script>`: that sequence walks the HTML tokenizer
+  into script-data-double-escaped state, where the block's own `</script>` no
+  longer closes it and the rest of the page is swallowed into the script
+  element. the payload contains no `/`, so `/`-escaping never saw it
+- text containing `<` still round-trips: `\x3c` and `\u003c` are `<` in a
+  JavaScript string, a template literal and a JSON string, so no decoded value
+  changes
+- `for_javascript_attribute` and `for_javascript_source` are unchanged — an
+  HTML attribute value and a standalone .js file are never tokenized as script
+  data, so the escaped states cannot arise there
+
 ## [0.7.0] - 2026-08-08
 
 - **breaking:** `for_css_url` now hex-escapes `(`, `)` and space (#49). a `)` in
