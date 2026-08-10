@@ -1,6 +1,6 @@
 # changelog
 
-## Unreleased
+## [0.8.0] - 2026-08-10
 
 - **breaking:** the `<script>`-block encoders — `for_javascript`,
   `for_javascript_block` and `for_js_template` — now escape `<` as `\x3c`, and
@@ -15,6 +15,9 @@
 - `for_javascript_attribute` and `for_javascript_source` are unchanged — an
   HTML attribute value and a standalone .js file are never tokenized as script
   data, so the escaped states cannot arise there
+- **every release through 0.7.0 is affected**, on all four encoders. there are
+  no crates.io dependents, so this is recorded here rather than as an
+  advisory; upgrade to 0.8.0 to pick up the fix
 
 ## [0.7.0] - 2026-08-08
 
