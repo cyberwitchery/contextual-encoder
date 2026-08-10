@@ -224,8 +224,37 @@ mod javascript {
     fn script_block_breakout() {
         assert_eq!(
             for_javascript("</script><script>alert(1)</script>"),
-            r"<\/script><script>alert(1)<\/script>"
+            r"\x3c\/script>\x3cscript>alert(1)\x3c\/script>"
         );
+    }
+
+    // `<!--<script>` reaches script-data-double-escaped state, where the
+    // block's own `</script>` stops closing it
+    #[test]
+    fn script_data_double_escape_start_blocked() {
+        assert_eq!(for_javascript("<!--<script>"), r"\x3c!--\x3cscript>");
+        assert_eq!(for_javascript_block("<!--<script>"), r"\x3c!--\x3cscript>");
+        assert_eq!(for_js_template("<!--<script>"), r"\x3c!--\x3cscript>");
+    }
+
+    #[test]
+    fn script_data_escape_neighbours_encoded() {
+        for input in ["<!--", "<script", "</script>", "<!--<script >", "<"] {
+            for (name, encoded) in [
+                ("javascript", for_javascript(input)),
+                ("javascript_block", for_javascript_block(input)),
+                ("js_template", for_js_template(input)),
+            ] {
+                assert!(!encoded.contains('<'), "{name}: {input:?} -> {encoded:?}");
+            }
+        }
+    }
+
+    // an attribute value and a .js file are never tokenized as script data
+    #[test]
+    fn script_data_encoders_are_opt_in() {
+        assert_eq!(for_javascript_attribute("<!--<script>"), "<!--<script>");
+        assert_eq!(for_javascript_source("<!--<script>"), "<!--<script>");
     }
 
     #[test]
@@ -373,7 +402,7 @@ mod js_template {
     fn script_block_breakout() {
         assert_eq!(
             for_js_template("</script><script>alert(1)</script>"),
-            r"<\/script><script>alert(1)<\/script>"
+            r"\x3c\/script>\x3cscript>alert(1)\x3c\/script>"
         );
     }
 
@@ -1876,7 +1905,7 @@ mod json {
         // RFC 8259 §7 permits \/ — we use it to prevent </script> breakout
         assert_eq!(for_json("/"), "\\/");
         assert_eq!(for_json("a/b"), "a\\/b");
-        assert_eq!(for_json("</script>"), "<\\/script>");
+        assert_eq!(for_json("</script>"), "\\u003c\\/script>");
         assert_eq!(for_json("https://example.com"), "https:\\/\\/example.com");
     }
 
@@ -1885,8 +1914,15 @@ mod json {
         // JSON embedded in <script> blocks must not allow </script> injection
         assert_eq!(
             for_json("</script><script>alert(1)//"),
-            "<\\/script><script>alert(1)\\/\\/"
+            "\\u003c\\/script>\\u003cscript>alert(1)\\/\\/"
         );
+    }
+
+    #[test]
+    fn script_data_double_escape_start_blocked() {
+        assert_eq!(for_json("<!--<script>"), "\\u003c!--\\u003cscript>");
+        assert_eq!(for_json("<!--"), "\\u003c!--");
+        assert_eq!(for_json("<script"), "\\u003cscript");
     }
 
     #[test]

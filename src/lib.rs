@@ -24,7 +24,7 @@
 //!
 //! // safe for javascript string literals (universal)
 //! let js_safe = for_javascript(user_input);
-//! assert!(js_safe.contains(r"<\/script>"));
+//! assert!(js_safe.contains(r"\x3c\/script>"));
 //!
 //! // safe for quoted CSS string values
 //! let css_safe = for_css_string(user_input);

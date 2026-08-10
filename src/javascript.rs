@@ -21,8 +21,8 @@
 //!   accessors safe.
 //! - `for_javascript_block` and `for_javascript_source` use backslash escapes
 //!   for quotes (`\"`, `\'`) which are **not safe in HTML attribute contexts**.
-//! - `for_javascript_attribute` does not escape `/` and is **not safe in
-//!   `<script>` blocks** where `</script>` could appear.
+//! - `for_javascript_attribute` does not escape `<` or `/` and is **not safe
+//!   in `<script>` blocks** where `</script>` could appear.
 //! - none of these encoders produce valid JSON — the `\xHH` escapes they emit
 //!   for control characters are not permitted in JSON. use
 //!   [`for_json`](crate::for_json) for JSON string values.
@@ -39,32 +39,34 @@ struct JsConfig {
     hex_quotes: bool,
     /// true: encode `&` as `\x26` (prevents HTML entity interpretation).
     encode_ampersand: bool,
-    /// true: encode `/` as `\/` (prevents `</script>` injection).
-    encode_slash: bool,
+    /// true: the output can land in HTML script data, so encode every
+    /// character that can move the tokenizer out of it — `<` → `\x3c` and
+    /// `/` → `\/`.
+    script_data: bool,
 }
 
 const JS_UNIVERSAL: JsConfig = JsConfig {
     hex_quotes: true,
     encode_ampersand: true,
-    encode_slash: true,
+    script_data: true,
 };
 
 const JS_ATTRIBUTE: JsConfig = JsConfig {
     hex_quotes: true,
     encode_ampersand: true,
-    encode_slash: false,
+    script_data: false,
 };
 
 const JS_BLOCK: JsConfig = JsConfig {
     hex_quotes: false,
     encode_ampersand: true,
-    encode_slash: true,
+    script_data: true,
 };
 
 const JS_SOURCE: JsConfig = JsConfig {
     hex_quotes: false,
     encode_ampersand: false,
-    encode_slash: false,
+    script_data: false,
 };
 
 /// encodes `input` for safe embedding in a javascript string literal.
@@ -79,7 +81,8 @@ const JS_SOURCE: JsConfig = JsConfig {
 ///   (`\xHH`)
 /// - `"` → `\x22`, `'` → `\x27` (hex escapes for HTML attribute safety)
 /// - `&` → `\x26` (prevents HTML entity interpretation)
-/// - `/` → `\/` (prevents `</script>` injection)
+/// - `<` → `\x3c`, `/` → `\/` (keeps the HTML tokenizer in script data state,
+///   so the enclosing `</script>` still closes the block)
 /// - `\` → `\\`
 /// - U+2028 → `\u2028`, U+2029 → `\u2029` (javascript line terminators)
 ///
@@ -103,7 +106,7 @@ const JS_SOURCE: JsConfig = JsConfig {
 /// use contextual_encoder::for_javascript;
 ///
 /// assert_eq!(for_javascript(r#"it's "unsafe" </script>"#),
-///            r"it\x27s \x22unsafe\x22 <\/script>");
+///            r"it\x27s \x22unsafe\x22 \x3c\/script>");
 /// assert_eq!(for_javascript("safe"), "safe");
 /// ```
 pub fn for_javascript(input: &str) -> String {
@@ -120,8 +123,9 @@ pub fn write_javascript<W: fmt::Write>(out: &mut W, input: &str) -> fmt::Result 
 /// encodes `input` for safe embedding in a javascript string literal inside
 /// an HTML event attribute (e.g., `onclick="..."`).
 ///
-/// identical to [`for_javascript`] except `/` is **not** escaped (not
-/// needed in event attributes where `</script>` is not a concern).
+/// identical to [`for_javascript`] except `<` and `/` are **not** escaped. an
+/// attribute value is never tokenized as script data, so neither character can
+/// affect where the enclosing element ends.
 ///
 /// **not safe in `<script>` blocks** — use [`for_javascript`] or
 /// [`for_javascript_block`] instead.
@@ -132,6 +136,7 @@ pub fn write_javascript<W: fmt::Write>(out: &mut W, input: &str) -> fmt::Result 
 /// use contextual_encoder::for_javascript_attribute;
 ///
 /// assert_eq!(for_javascript_attribute("a/b"), "a/b");
+/// assert_eq!(for_javascript_attribute("a<b"), "a<b");
 /// assert_eq!(for_javascript_attribute("a'b"), r"a\x27b");
 /// ```
 pub fn for_javascript_attribute(input: &str) -> String {
@@ -150,7 +155,8 @@ pub fn write_javascript_attribute<W: fmt::Write>(out: &mut W, input: &str) -> fm
 ///
 /// uses backslash escapes for quotes (`\"`, `\'`) which are more readable
 /// but **not safe in HTML attribute contexts**. still encodes `&` (for XHTML
-/// compatibility) and `/` (to prevent `</script>` injection).
+/// compatibility) and `<`/`/`, which keep the HTML tokenizer in script data
+/// state so the enclosing `</script>` still closes the block.
 ///
 /// # examples
 ///
@@ -158,7 +164,8 @@ pub fn write_javascript_attribute<W: fmt::Write>(out: &mut W, input: &str) -> fm
 /// use contextual_encoder::for_javascript_block;
 ///
 /// assert_eq!(for_javascript_block(r#"he said "hi""#), r#"he said \"hi\""#);
-/// assert_eq!(for_javascript_block("</script>"), r"<\/script>");
+/// assert_eq!(for_javascript_block("</script>"), r"\x3c\/script>");
+/// assert_eq!(for_javascript_block("<!--<script>"), r"\x3c!--\x3cscript>");
 /// ```
 pub fn for_javascript_block(input: &str) -> String {
     encode_js(input, &JS_BLOCK)
@@ -174,8 +181,9 @@ pub fn write_javascript_block<W: fmt::Write>(out: &mut W, input: &str) -> fmt::R
 /// encodes `input` for safe embedding in a javascript string literal in a
 /// standalone .js file.
 ///
-/// the most minimal javascript encoder — does not encode `/` or `&` since
-/// there is no HTML context. **not safe for any HTML-embedded context.**
+/// the most minimal javascript encoder — does not encode `<`, `/` or `&`
+/// since a standalone .js file is never HTML-tokenized. **not safe for any
+/// HTML-embedded context.**
 ///
 /// **not a JSON encoder.** it emits `\'` for single quotes and `\xHH` for
 /// control characters, neither of which JSON permits. use
@@ -186,7 +194,7 @@ pub fn write_javascript_block<W: fmt::Write>(out: &mut W, input: &str) -> fmt::R
 /// ```
 /// use contextual_encoder::{for_javascript_source, for_json};
 ///
-/// assert_eq!(for_javascript_source("a/b&c"), "a/b&c");
+/// assert_eq!(for_javascript_source("a/b&c<d"), "a/b&c<d");
 /// assert_eq!(for_javascript_source("line\nbreak"), r"line\nbreak");
 ///
 /// assert_eq!(for_javascript_source("it's"), r"it\'s");
@@ -215,7 +223,8 @@ pub fn write_javascript_source<W: fmt::Write>(out: &mut W, input: &str) -> fmt::
 /// - `` ` `` → `` \` `` (prevents breaking out of the template literal)
 /// - `$` followed by `{` → `\${` (prevents expression interpolation)
 /// - `\` → `\\`
-/// - `/` → `\/` (prevents `</script>` injection)
+/// - `<` → `\x3c`, `/` → `\/` (keeps the HTML tokenizer in script data state,
+///   so the enclosing `</script>` still closes the block)
 /// - C0 controls → named escapes (`\b`, `\t`, `\n`, `\f`, `\r`) or hex
 ///   (`\xHH`)
 /// - U+2028 → `\u2028`, U+2029 → `\u2029` (line/paragraph separators)
@@ -254,7 +263,7 @@ pub fn write_js_template<W: fmt::Write>(out: &mut W, input: &str) -> fmt::Result
 fn needs_js_template_encoding(c: char) -> bool {
     matches!(
         c,
-        '\x00'..='\x1F' | '\\' | '`' | '$' | '/' | '\u{2028}' | '\u{2029}'
+        '\x00'..='\x1F' | '\\' | '`' | '$' | '/' | '<' | '\u{2028}' | '\u{2029}'
     )
 }
 
@@ -269,11 +278,9 @@ fn write_js_template_encoded<W: fmt::Write>(
         '$' if next == Some('{') => out.write_str("\\$"),
         '$' => out.write_char('$'),
         '/' => out.write_str("\\/"),
+        '<' => out.write_str("\\x3c"),
         // C0 controls, backslash, and line separators
-        c => {
-            write_js_shared_escape(out, c)?;
-            Ok(())
-        }
+        c => write_js_shared_escape(out, c),
     }
 }
 
@@ -296,7 +303,7 @@ fn needs_js_encoding(c: char, config: &JsConfig) -> bool {
     match c {
         '\x00'..='\x1F' | '\\' | '"' | '\'' | '\u{2028}' | '\u{2029}' => true,
         '&' => config.encode_ampersand,
-        '/' => config.encode_slash,
+        '/' | '<' => config.script_data,
         _ => false,
     }
 }
@@ -310,30 +317,29 @@ fn write_js_encoded<W: fmt::Write>(out: &mut W, c: char, config: &JsConfig) -> f
         '\'' => out.write_str("\\'"),
         '&' => out.write_str("\\x26"),
         '/' => out.write_str("\\/"),
+        '<' => out.write_str("\\x3c"),
         // C0 controls, backslash, and line separators
-        c => {
-            write_js_shared_escape(out, c)?;
-            Ok(())
-        }
+        c => write_js_shared_escape(out, c),
     }
 }
 
-/// writes the C0-control/backslash/line-separator escape shared by both js encoders; returns whether `c` was handled.
-fn write_js_shared_escape<W: fmt::Write>(out: &mut W, c: char) -> Result<bool, fmt::Error> {
+/// writes the C0-control/backslash/line-separator escape shared by both js
+/// encoders. any other character falls back to `\u{...}` so a character a
+/// predicate flags can never be dropped from the output.
+fn write_js_shared_escape<W: fmt::Write>(out: &mut W, c: char) -> fmt::Result {
     match c {
-        '\x08' => out.write_str("\\b")?,
-        '\t' => out.write_str("\\t")?,
-        '\n' => out.write_str("\\n")?,
-        '\x0B' => out.write_str("\\x0b")?,
-        '\x0C' => out.write_str("\\f")?,
-        '\r' => out.write_str("\\r")?,
-        '\\' => out.write_str("\\\\")?,
-        '\u{2028}' => out.write_str("\\u2028")?,
-        '\u{2029}' => out.write_str("\\u2029")?,
-        '\x00'..='\x1F' => write!(out, "\\x{:02x}", c as u32)?,
-        _ => return Ok(false),
+        '\x08' => out.write_str("\\b"),
+        '\t' => out.write_str("\\t"),
+        '\n' => out.write_str("\\n"),
+        '\x0B' => out.write_str("\\x0b"),
+        '\x0C' => out.write_str("\\f"),
+        '\r' => out.write_str("\\r"),
+        '\\' => out.write_str("\\\\"),
+        '\u{2028}' => out.write_str("\\u2028"),
+        '\u{2029}' => out.write_str("\\u2029"),
+        '\x00'..='\x1F' => write!(out, "\\x{:02x}", c as u32),
+        c => write!(out, "\\u{{{:x}}}", c as u32),
     }
-    Ok(true)
 }
 
 #[cfg(test)]
@@ -366,7 +372,16 @@ mod tests {
 
     #[test]
     fn js_encodes_slash() {
-        assert_eq!(for_javascript("</script>"), r"<\/script>");
+        assert_eq!(for_javascript("a/b"), r"a\/b");
+        assert_eq!(for_javascript("</script>"), r"\x3c\/script>");
+    }
+
+    #[test]
+    fn js_encodes_lt() {
+        assert_eq!(for_javascript("a<b"), r"a\x3cb");
+        assert_eq!(for_javascript("<!--<script>"), r"\x3c!--\x3cscript>");
+        assert_eq!(for_javascript("<!--"), r"\x3c!--");
+        assert_eq!(for_javascript("<script"), r"\x3cscript");
     }
 
     #[test]
@@ -403,8 +418,9 @@ mod tests {
     // -- for_javascript_attribute --
 
     #[test]
-    fn js_attr_does_not_encode_slash() {
+    fn js_attr_does_not_encode_slash_or_lt() {
         assert_eq!(for_javascript_attribute("a/b"), "a/b");
+        assert_eq!(for_javascript_attribute("<!--<script>"), "<!--<script>");
     }
 
     #[test]
@@ -431,6 +447,14 @@ mod tests {
     }
 
     #[test]
+    fn js_block_encodes_lt() {
+        assert_eq!(for_javascript_block("a<b"), r"a\x3cb");
+        assert_eq!(for_javascript_block("<!--<script>"), r"\x3c!--\x3cscript>");
+        assert_eq!(for_javascript_block("<!--"), r"\x3c!--");
+        assert_eq!(for_javascript_block("<script"), r"\x3cscript");
+    }
+
+    #[test]
     fn js_block_encodes_ampersand() {
         assert_eq!(for_javascript_block("a&b"), r"a\x26b");
     }
@@ -444,8 +468,9 @@ mod tests {
     }
 
     #[test]
-    fn js_source_does_not_encode_slash_or_ampersand() {
+    fn js_source_does_not_encode_slash_ampersand_or_lt() {
         assert_eq!(for_javascript_source("a/b&c"), "a/b&c");
+        assert_eq!(for_javascript_source("<!--<script>"), "<!--<script>");
     }
 
     #[test]
@@ -488,7 +513,16 @@ mod tests {
 
     #[test]
     fn js_template_encodes_slash() {
-        assert_eq!(for_js_template("</script>"), r"<\/script>");
+        assert_eq!(for_js_template("a/b"), r"a\/b");
+        assert_eq!(for_js_template("</script>"), r"\x3c\/script>");
+    }
+
+    #[test]
+    fn js_template_encodes_lt() {
+        assert_eq!(for_js_template("a<b"), r"a\x3cb");
+        assert_eq!(for_js_template("<!--<script>"), r"\x3c!--\x3cscript>");
+        assert_eq!(for_js_template("<!--"), r"\x3c!--");
+        assert_eq!(for_js_template("<script"), r"\x3cscript");
     }
 
     #[test]
@@ -558,18 +592,17 @@ mod tests {
         ];
         for (c, expected) in cases {
             let mut out = String::new();
-            assert_eq!(write_js_shared_escape(&mut out, c), Ok(true));
+            assert_eq!(write_js_shared_escape(&mut out, c), Ok(()));
             assert_eq!(out, expected);
         }
     }
 
     #[test]
-    fn shared_escape_declines_format_specific_chars() {
-        // caller-handled chars are not shared: helper reports `false`, writes nothing.
-        for c in ['a', '"', '\'', '&', '/', '`', '$', 'é'] {
+    fn shared_escape_never_drops_a_character() {
+        for (c, expected) in [('a', r"\u{61}"), ('"', r"\u{22}"), ('é', r"\u{e9}")] {
             let mut out = String::new();
-            assert_eq!(write_js_shared_escape(&mut out, c), Ok(false));
-            assert!(out.is_empty());
+            assert_eq!(write_js_shared_escape(&mut out, c), Ok(()));
+            assert_eq!(out, expected);
         }
     }
 }
