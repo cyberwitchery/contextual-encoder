@@ -9,6 +9,8 @@
 //!   only, defined below) recovers the original string from the encoded form.
 //! - **safety** for the lossy encoders: no context-breaking sequence survives
 //!   in the output for that encoder's specific context.
+//! - **boundary**: two `write_*` calls into one sink concatenate to output that
+//!   is still safe and still decodes to both inputs.
 //! - **universal**: ascii-alphanumeric input is identity, and the `for_*`,
 //!   `write_*`, and `display_*` variants agree.
 //!
@@ -800,7 +802,7 @@ fn css_url_encodes_a_superset_of_css_string() {
     for c in scalars() {
         let s = one(c, &mut buf);
         let expected = if c == ' ' {
-            String::from(r"\20")
+            String::from(r"\20 ")
         } else {
             for_css_string(s)
         };
@@ -1135,6 +1137,132 @@ fn all_encoders() -> Vec<Encoder> {
             d_sql_backslash
         ),
     ]
+}
+
+// ---------------------------------------------------------------------------
+// streaming boundaries: two write_* calls into one sink
+// ---------------------------------------------------------------------------
+
+/// true if the template-literal body opens an interpolation.
+fn template_opens_interpolation(body: &str) -> bool {
+    let cs: Vec<char> = body.chars().collect();
+    let mut i = 0;
+    while i < cs.len() {
+        match cs[i] {
+            '\\' => i += 2,
+            '$' if cs.get(i + 1) == Some(&'{') => return true,
+            _ => i += 1,
+        }
+    }
+    false
+}
+
+/// true if `body` may sit between `<!--` and `-->`.
+fn xml_comment_body_is_well_formed(body: &str) -> bool {
+    !body.contains("--") && !body.ends_with('-')
+}
+
+/// encodes `head` then `tail` into one string with `write_fn`.
+fn write_both(write_fn: WriteFn, head: &str, tail: &str) -> String {
+    let mut sink = String::new();
+    write_fn(&mut sink, head).unwrap();
+    write_fn(&mut sink, tail).unwrap();
+    sink
+}
+
+#[test]
+fn boundary_js_template_cannot_reopen_interpolation() {
+    let sink = write_both(write_js_template, "price: $", "{alert(1)}");
+    assert_eq!(sink, r"price: \${alert(1)}");
+    assert_eq!(js_unescape(&sink), "price: ${alert(1)}");
+
+    let mut buf = [0u8; 4];
+    for c in scalars() {
+        let sink = write_both(write_js_template, one(c, &mut buf), "{alert(1)}");
+        assert!(
+            !template_opens_interpolation(&sink),
+            "js_template: interpolation opened across the boundary for {c:?} -> {sink:?}"
+        );
+    }
+}
+
+/// asserts the two-write concatenation is still one string-token decoding to
+/// `head` followed by `tail`.
+fn assert_string_token_intact_across_boundary(head: &str, tail: &str) {
+    let encoded = write_both(write_css_string, head, tail);
+    let sheet = css_preprocess(&format!("\"{encoded}\"{CSS_TAIL}"));
+    let expected_end = sheet.len() - CSS_TAIL.chars().count();
+    match consume_string_token(&sheet, 1, '"') {
+        StringToken::Str(value, end) => {
+            assert_eq!(
+                end, expected_end,
+                "for_css_string: string-token did not end at its quote for {head:?}+{tail:?} -> {encoded:?}"
+            );
+            assert_eq!(
+                value,
+                css_expected_value(head) + &css_expected_value(tail),
+                "for_css_string: value altered for {head:?}+{tail:?} -> {encoded:?}"
+            );
+        }
+        StringToken::Bad => {
+            panic!("for_css_string: bad-string-token for {head:?}+{tail:?} -> {encoded:?}")
+        }
+    }
+}
+
+/// the [`assert_string_token_intact_across_boundary`] analogue for `url()`.
+fn assert_url_token_intact_across_boundary(head: &str, tail: &str) {
+    let encoded = write_both(write_css_url, head, tail);
+    let sheet = css_preprocess(&format!("url({encoded}){CSS_TAIL}"));
+    let expected_end = sheet.len() - CSS_TAIL.chars().count();
+    match consume_url_token(&sheet, 4) {
+        UrlToken::Url(value, end) => {
+            assert_eq!(
+                end, expected_end,
+                "for_css_url: url-token did not end at its `)` for {head:?}+{tail:?} -> {encoded:?}"
+            );
+            assert_eq!(
+                value,
+                css_expected_value(head) + &css_expected_value(tail),
+                "for_css_url: value altered for {head:?}+{tail:?} -> {encoded:?}"
+            );
+        }
+        UrlToken::Bad(end) => panic!(
+            "for_css_url: bad-url-token for {head:?}+{tail:?} -> {encoded:?}, swallowing {:?}",
+            sheet[..end].iter().collect::<String>()
+        ),
+    }
+}
+
+#[test]
+fn boundary_css_escape_does_not_absorb_the_next_write() {
+    assert_eq!(write_both(write_css_string, "a\"", "b"), r"a\22 b");
+    assert_string_token_intact_across_boundary("a\"", "b");
+    assert_url_token_intact_across_boundary("a\"", "b");
+
+    let mut buf = [0u8; 4];
+    for c in scalars() {
+        let s = one(c, &mut buf);
+        assert_string_token_intact_across_boundary(s, "b0");
+        assert_url_token_intact_across_boundary(s, "b0");
+    }
+}
+
+#[test]
+fn boundary_xml_comment_cannot_form_a_double_hyphen() {
+    assert_eq!(
+        write_both(write_xml_comment, "value-", "-more"),
+        "value~-more"
+    );
+
+    let mut buf = [0u8; 4];
+    for c in scalars() {
+        let sink = write_both(write_xml_comment, one(c, &mut buf), "-tail");
+        assert!(
+            xml_comment_body_is_well_formed(&sink),
+            "xml_comment: `--` or trailing `-` across the boundary for {c:?} -> {sink:?}"
+        );
+    }
 }
 
 #[test]
