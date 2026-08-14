@@ -61,7 +61,7 @@ see [examples](#examples) for the other contexts, or run
 | `for_xml_content` | XML content only | alias for `for_html_content` |
 | `for_xml_attribute` | quoted XML attributes | alias for `for_html_attribute` |
 | `for_xml_comment` | XML comment content | `--` → `-~`, trailing `-` → `~` |
-| `for_cdata` | CDATA section content | splits `]]>` to prevent premature close |
+| `for_cdata` | CDATA section content | splits `]]>`, and a trailing `]`, to prevent premature close |
 
 ### XML 1.1
 
