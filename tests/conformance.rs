@@ -1559,11 +1559,34 @@ mod xml {
 
     #[test]
     fn cdata_brackets_without_gt() {
-        // just brackets, no >
-        assert_eq!(for_cdata("]]"), "]]");
-        assert_eq!(for_cdata("]]]"), "]]]");
+        // brackets away from the end
+        assert_eq!(for_cdata("]]a"), "]]a");
+        assert_eq!(for_cdata("a]b"), "a]b");
         // single bracket + >
         assert_eq!(for_cdata("]>"), "]>");
+    }
+
+    #[test]
+    fn cdata_splits_trailing_bracket() {
+        assert_eq!(for_cdata("]"), "]]]><![CDATA[");
+        assert_eq!(for_cdata("]]"), "]]]]><![CDATA[");
+        assert_eq!(for_cdata("]]]"), "]]]]]><![CDATA[");
+        assert_eq!(for_cdata("a]"), "a]]]><![CDATA[");
+    }
+
+    #[test]
+    fn cdata_writes_cannot_form_a_delimiter_across_the_boundary() {
+        for (head, tail) in [("a]]", ">b"), ("a]", "]>b"), ("a]", ">b")] {
+            let mut sink = String::new();
+            write_cdata(&mut sink, head).unwrap();
+            write_cdata(&mut sink, tail).unwrap();
+            for (i, w) in sink.as_bytes().windows(3).enumerate() {
+                assert!(
+                    w != b"]]>" || sink[i..].starts_with("]]><![CDATA["),
+                    "{head:?} + {tail:?} closed the section: {sink:?}"
+                );
+            }
+        }
     }
 
     #[test]

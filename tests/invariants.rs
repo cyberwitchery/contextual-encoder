@@ -932,6 +932,111 @@ fn safety_cdata() {
     }
 }
 
+/// the character data `for_cdata` output is meant to denote.
+fn cdata_expected_value(input: &str) -> String {
+    input
+        .chars()
+        .map(|c| if is_invalid_for_xml(c) { ' ' } else { c })
+        .collect()
+}
+
+/// decodes a wrapped `for_cdata` output back to character data, returning
+/// `None` if it is not well-formed: outside a CDATA section, `]]>` is
+/// forbidden (XML 1.0 §2.4) and `<` and `&` start markup.
+fn decode_cdata_fragment(fragment: &str) -> Option<String> {
+    let mut out = String::new();
+    let mut rest = fragment;
+    while !rest.is_empty() {
+        if let Some(body) = rest.strip_prefix("<![CDATA[") {
+            let end = body.find("]]>")?;
+            out.push_str(&body[..end]);
+            rest = &body[end + 3..];
+        } else {
+            let end = rest.find("<![CDATA[").unwrap_or(rest.len());
+            let text = &rest[..end];
+            if text.contains("]]>") || text.contains('<') || text.contains('&') {
+                return None;
+            }
+            out.push_str(text);
+            rest = &rest[end..];
+        }
+    }
+    Some(out)
+}
+
+/// encodes `head` then `tail` into one sink and wraps the result the way the
+/// caller is documented to.
+fn cdata_section(head: &str, tail: &str) -> String {
+    let mut sink = String::from("<![CDATA[");
+    write_cdata(&mut sink, head).unwrap();
+    write_cdata(&mut sink, tail).unwrap();
+    sink.push_str("]]>");
+    sink
+}
+
+fn assert_cdata_boundary_holds(head: &str, tail: &str) {
+    let section = cdata_section(head, tail);
+    let want = cdata_expected_value(head) + &cdata_expected_value(tail);
+    match decode_cdata_fragment(&section) {
+        Some(got) => assert_eq!(
+            got, want,
+            "for_cdata: value altered for {head:?}+{tail:?} -> {section:?}"
+        ),
+        None => panic!("for_cdata: content escaped for {head:?}+{tail:?} -> {section:?}"),
+    }
+}
+
+/// every string of length <= 4 over the alphabet the encoder branches on.
+fn cdata_words() -> Vec<String> {
+    let mut all = vec![String::new()];
+    let mut frontier = vec![String::new()];
+    for _ in 0..4 {
+        let mut next = Vec::new();
+        for s in &frontier {
+            for c in [']', '>', 'a', '\u{1}'] {
+                let mut w = s.clone();
+                w.push(c);
+                next.push(w);
+            }
+        }
+        all.extend(next.iter().cloned());
+        frontier = next;
+    }
+    all
+}
+
+#[test]
+fn safety_cdata_across_a_write_boundary() {
+    assert_cdata_boundary_holds("a]]", ">b");
+    assert_cdata_boundary_holds("a]", "]>b");
+
+    let words = cdata_words();
+    for head in &words {
+        for tail in &words {
+            assert_cdata_boundary_holds(head, tail);
+        }
+    }
+}
+
+#[test]
+fn cdata_output_never_ends_with_a_bracket() {
+    let mut buf = [0u8; 4];
+    for c in scalars() {
+        for probe in [
+            String::from(one(c, &mut buf)),
+            format!("]{c}"),
+            format!("{c}]"),
+            format!("{c}]]"),
+        ] {
+            let out = for_cdata(&probe);
+            assert!(
+                !out.ends_with(']'),
+                "for_cdata: output ends with `]` for {probe:?}: {out:?}"
+            );
+        }
+    }
+}
+
 #[test]
 fn safety_xml_comment() {
     let mut buf = [0u8; 4];

@@ -165,6 +165,9 @@ pub fn write_xml_comment<W: fmt::Write>(out: &mut W, input: &str) -> fmt::Result
 ///
 /// `]]>` → `]]]]><![CDATA[>`
 ///
+/// a `]` that ends the input is split the same way, so no text written after
+/// the output can complete a delimiter.
+///
 /// the caller is responsible for wrapping the output in `<![CDATA[...]]>`.
 ///
 /// invalid XML characters are replaced with a space.
@@ -176,7 +179,9 @@ pub fn write_xml_comment<W: fmt::Write>(out: &mut W, input: &str) -> fmt::Result
 ///
 /// assert_eq!(for_cdata("safe text"), "safe text");
 /// assert_eq!(for_cdata("a]]>b"), "a]]]]><![CDATA[>b");
-/// assert_eq!(for_cdata("]]"), "]]");
+/// // wrapped, this is still `<![CDATA[a]]]]><![CDATA[]]>`, which decodes to `a]]`
+/// assert_eq!(for_cdata("a]]"), "a]]]]><![CDATA[");
+/// assert_eq!(for_cdata("a]b"), "a]b");
 /// ```
 pub fn for_cdata(input: &str) -> String {
     let mut out = String::with_capacity(input.len());
@@ -195,6 +200,10 @@ pub fn write_cdata<W: fmt::Write>(out: &mut W, input: &str) -> fmt::Result {
         |c| c == ']' || c == '>' || is_invalid_for_xml(c),
         |out, c, next| {
             if c == ']' {
+                if next.is_none() {
+                    // the input's own `]`, then a split
+                    return out.write_str("]]]><![CDATA[");
+                }
                 bracket_count += 1;
                 if next != Some(']') && next != Some('>') {
                     bracket_count = 0;
@@ -403,9 +412,29 @@ mod tests {
 
     #[test]
     fn cdata_brackets_without_gt() {
-        assert_eq!(for_cdata("]]"), "]]");
-        assert_eq!(for_cdata("]"), "]");
         assert_eq!(for_cdata("]]a"), "]]a");
+        assert_eq!(for_cdata("a]b"), "a]b");
+    }
+
+    #[test]
+    fn cdata_splits_trailing_bracket() {
+        assert_eq!(for_cdata("]"), "]]]><![CDATA[");
+        assert_eq!(for_cdata("]]"), "]]]]><![CDATA[");
+        assert_eq!(for_cdata("]]]"), "]]]]]><![CDATA[");
+        assert_eq!(for_cdata("a]"), "a]]]><![CDATA[");
+    }
+
+    #[test]
+    fn cdata_writes_cannot_form_a_delimiter_across_the_boundary() {
+        let mut out = String::new();
+        write_cdata(&mut out, "a]]").unwrap();
+        write_cdata(&mut out, ">b").unwrap();
+        assert_eq!(out, "a]]]]><![CDATA[>b");
+
+        let mut out = String::new();
+        write_cdata(&mut out, "a]").unwrap();
+        write_cdata(&mut out, "]>b").unwrap();
+        assert_eq!(out, "a]]]><![CDATA[]>b");
     }
 
     #[test]
