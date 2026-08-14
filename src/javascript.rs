@@ -221,7 +221,8 @@ pub fn write_javascript_source<W: fmt::Write>(out: &mut W, input: &str) -> fmt::
 /// # encoding rules
 ///
 /// - `` ` `` → `` \` `` (prevents breaking out of the template literal)
-/// - `$` followed by `{` → `\${` (prevents expression interpolation)
+/// - `$` followed by `{`, and `$` at the end of the input → `\$` (prevents
+///   expression interpolation, including a `${` the caller completes)
 /// - `\` → `\\`
 /// - `<` → `\x3c`, `/` → `\/` (keeps the HTML tokenizer in script data state,
 ///   so the enclosing `</script>` still closes the block)
@@ -241,6 +242,8 @@ pub fn write_javascript_source<W: fmt::Write>(out: &mut W, input: &str) -> fmt::
 /// assert_eq!(for_js_template("${alert(1)}"), r"\${alert(1)}");
 /// assert_eq!(for_js_template("safe"), "safe");
 /// assert_eq!(for_js_template("a $ b"), "a $ b");
+/// // `\$` is `$` in a template literal, so the decoded value is unchanged
+/// assert_eq!(for_js_template("cost: $"), r"cost: \$");
 /// ```
 pub fn for_js_template(input: &str) -> String {
     let mut out = String::with_capacity(input.len());
@@ -275,7 +278,7 @@ fn write_js_template_encoded<W: fmt::Write>(
     match c {
         // template-specific characters
         '`' => out.write_str("\\`"),
-        '$' if next == Some('{') => out.write_str("\\$"),
+        '$' if matches!(next, Some('{') | None) => out.write_str("\\$"),
         '$' => out.write_char('$'),
         '/' => out.write_str("\\/"),
         '<' => out.write_str("\\x3c"),
@@ -503,7 +506,12 @@ mod tests {
     fn js_template_dollar_without_brace_passes_through() {
         assert_eq!(for_js_template("a $ b"), "a $ b");
         assert_eq!(for_js_template("$100"), "$100");
-        assert_eq!(for_js_template("a$"), "a$");
+    }
+
+    #[test]
+    fn js_template_escapes_trailing_dollar() {
+        assert_eq!(for_js_template("a$"), r"a\$");
+        assert_eq!(for_js_template("$"), r"\$");
     }
 
     #[test]

@@ -79,7 +79,7 @@ see [examples](#examples) for the other contexts, or run
 | `for_javascript_attribute` | HTML event attributes | does not escape `<` or `/` |
 | `for_javascript_block` | `<script>` blocks | uses backslash quote escapes |
 | `for_javascript_source` | standalone .js files | minimal encoding; not valid JSON — use `for_json` |
-| `for_js_template` | ES6 template literal content | escapes `` ` `` and `${` |
+| `for_js_template` | ES6 template literal content | escapes `` ` ``, `${`, and a trailing `$` |
 
 the `<script>`-block encoders (`for_javascript`, `for_javascript_block`,
 `for_js_template`) escape `<` as `\x3c` as well as `/` as `\/`. escaping `/`
@@ -91,7 +91,7 @@ HTML tokenizer into script-data-double-escaped state — where the block's real
 
 | function | safe for | notes |
 |----------|----------|-------|
-| `for_css_string` | quoted CSS string values | hex escapes with separator spaces |
+| `for_css_string` | quoted CSS string values | hex escapes with separator spaces, including at the end |
 | `for_css_url` | CSS `url()` values, quoted or unquoted | like `for_css_string` plus space — output is always one url-token |
 
 ### URI

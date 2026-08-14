@@ -373,7 +373,13 @@ mod js_template {
     fn dollar_without_brace_passes_through() {
         assert_eq!(for_js_template("$100"), "$100");
         assert_eq!(for_js_template("a $ b"), "a $ b");
-        assert_eq!(for_js_template("a$"), "a$");
+    }
+
+    #[test]
+    fn trailing_dollar_escaped() {
+        assert_eq!(for_js_template("a$"), r"a\$");
+        assert_eq!(for_js_template("$"), r"\$");
+        assert_eq!(for_js_template("$$"), r"$\$");
     }
 
     #[test]
@@ -576,10 +582,10 @@ mod css {
     #[test]
     fn hex_escape_format() {
         // shortest hex, no zero-padding
-        assert_eq!(for_css_string("\x00"), r"\0");
-        assert_eq!(for_css_string("\x01"), r"\1");
-        assert_eq!(for_css_string("\""), r"\22");
-        assert_eq!(for_css_string("'"), r"\27");
+        assert_eq!(for_css_string("\x00"), r"\0 ");
+        assert_eq!(for_css_string("\x01"), r"\1 ");
+        assert_eq!(for_css_string("\""), r"\22 ");
+        assert_eq!(for_css_string("'"), r"\27 ");
     }
 
     #[test]
@@ -599,29 +605,29 @@ mod css {
     fn trailing_space_before_whitespace() {
         // space after hex escape before whitespace chars
         assert_eq!(for_css_string("\" "), r"\22  "); // space
-        assert_eq!(for_css_string("\"\t"), r"\22 \9"); // tab (also encoded)
-        assert_eq!(for_css_string("\"\n"), r"\22 \a"); // LF (also encoded)
+        assert_eq!(for_css_string("\"\t"), r"\22 \9 "); // tab (also encoded)
+        assert_eq!(for_css_string("\"\n"), r"\22 \a "); // LF (also encoded)
     }
 
     #[test]
-    fn no_trailing_space_at_end() {
-        assert_eq!(for_css_string("\""), r"\22");
-        assert_eq!(for_css_string("'"), r"\27");
+    fn trailing_space_at_end_of_input() {
+        assert_eq!(for_css_string("\""), r"\22 ");
+        assert_eq!(for_css_string("'"), r"\27 ");
     }
 
     #[test]
     fn consecutive_encoded_chars() {
-        assert_eq!(for_css_string("\"'"), r"\22\27");
+        assert_eq!(for_css_string("\"'"), r"\22\27 ");
         // \ → \5c, next input char is " which is not a hex digit (it will
         // be encoded separately), so no trailing space after \5c
-        assert_eq!(for_css_string("\\\""), r"\5c\22");
+        assert_eq!(for_css_string("\\\""), r"\5c\22 ");
     }
 
     #[test]
     fn css_string_xss_payload() {
         assert_eq!(
             for_css_string("expression(alert(1))"),
-            r"expression\28 alert\28 1\29\29"
+            r"expression\28 alert\28 1\29\29 "
         );
     }
 
@@ -643,10 +649,10 @@ mod css {
     #[test]
     fn c1_controls_encoded() {
         // boundary values
-        assert_eq!(for_css_string("\u{0080}"), r"\80");
-        assert_eq!(for_css_string("\u{009F}"), r"\9f");
+        assert_eq!(for_css_string("\u{0080}"), r"\80 ");
+        assert_eq!(for_css_string("\u{009F}"), r"\9f ");
         // NEL (U+0085) — can affect CSS parsing
-        assert_eq!(for_css_string("\u{0085}"), r"\85");
+        assert_eq!(for_css_string("\u{0085}"), r"\85 ");
     }
 
     #[test]
@@ -675,9 +681,9 @@ mod css {
 
     #[test]
     fn c1_controls_in_url_context() {
-        assert_eq!(for_css_url("\u{0080}"), r"\80");
-        assert_eq!(for_css_url("\u{0085}"), r"\85");
-        assert_eq!(for_css_url("\u{009F}"), r"\9f");
+        assert_eq!(for_css_url("\u{0080}"), r"\80 ");
+        assert_eq!(for_css_url("\u{0085}"), r"\85 ");
+        assert_eq!(for_css_url("\u{009F}"), r"\9f ");
     }
 
     #[test]
@@ -698,10 +704,10 @@ mod css {
 
     #[test]
     fn url_encodes_everything_else() {
-        assert_eq!(for_css_url("\""), r"\22");
-        assert_eq!(for_css_url("'"), r"\27");
-        assert_eq!(for_css_url("\\"), r"\5c");
-        assert_eq!(for_css_url("<"), r"\3c");
+        assert_eq!(for_css_url("\""), r"\22 ");
+        assert_eq!(for_css_url("'"), r"\27 ");
+        assert_eq!(for_css_url("\\"), r"\5c ");
+        assert_eq!(for_css_url("<"), r"\3c ");
     }
 
     // -- url-token terminators (CSS Syntax Level 3 §4.3.6) --
@@ -709,7 +715,7 @@ mod css {
     #[test]
     fn url_encodes_closing_paren() {
         // issue #49: `)` ends an unquoted url-token, and the declaration block
-        assert_eq!(for_css_url(")"), r"\29");
+        assert_eq!(for_css_url(")"), r"\29 ");
         let encoded = for_css_url(");color:red}x{");
         assert_eq!(encoded, r"\29;color:red}x{");
         assert_eq!(
@@ -720,16 +726,16 @@ mod css {
 
     #[test]
     fn url_encodes_opening_paren() {
-        assert_eq!(for_css_url("("), r"\28");
+        assert_eq!(for_css_url("("), r"\28 ");
     }
 
     #[test]
     fn url_encodes_css_whitespace() {
-        assert_eq!(for_css_url(" "), r"\20");
-        assert_eq!(for_css_url("\t"), r"\9");
-        assert_eq!(for_css_url("\n"), r"\a");
-        assert_eq!(for_css_url("\r"), r"\d");
-        assert_eq!(for_css_url("\x0C"), r"\c");
+        assert_eq!(for_css_url(" "), r"\20 ");
+        assert_eq!(for_css_url("\t"), r"\9 ");
+        assert_eq!(for_css_url("\n"), r"\a ");
+        assert_eq!(for_css_url("\r"), r"\d ");
+        assert_eq!(for_css_url("\x0C"), r"\c ");
         assert_eq!(for_css_url("a b"), r"a\20 b");
         assert_eq!(for_css_url("a  b"), r"a\20 \20 b");
     }

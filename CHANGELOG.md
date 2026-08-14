@@ -1,5 +1,24 @@
 # changelog
 
+## Unreleased
+
+- **breaking:** the encoders that look at the following character no longer
+  treat the end of the input as "nothing follows". an encoder cannot see what
+  the caller appends, and `write_*` is a streaming sink, so two writes into one
+  string could previously reconstitute a sequence neither write contained
+- `for_js_template` now escapes a trailing `$` as `\$`. a value ending in `$`
+  followed by a `{` — a second write into the same sink, or literal template
+  source after the insertion point — reopened `${...}` interpolation
+- the CSS encoders now append a separator space after a hex escape that ends
+  the output. `for_css_string("a\"")` was `a\22`; appending `b` made `\22b`,
+  which CSS reads as U+022B rather than `"` followed by `b`. in `for_css_url`
+  that silently changed which URL was produced
+- decoded values are unchanged: `\$` is `$` in a template literal, and a CSS
+  escape consumes exactly one following whitespace character, so `\22 b` still
+  decodes to `"b`. only the encoded bytes differ, and only for inputs whose
+  last character is `$` (template) or needs escaping (CSS)
+- **every release through 0.8.0 is affected**
+
 ## [0.8.0] - 2026-08-10
 
 - **breaking:** the `<script>`-block encoders — `for_javascript`,

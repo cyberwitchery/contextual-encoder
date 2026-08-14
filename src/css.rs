@@ -6,7 +6,8 @@
 //! - [`for_css_url`] — safe for CSS `url()` values, quoted or unquoted
 //!
 //! both use CSS hex escape syntax (`\XX`) with a trailing space appended
-//! when the next character could be misinterpreted as part of the hex value.
+//! when the next character could be misinterpreted as part of the hex value,
+//! or when the escape ends the output.
 //!
 //! # security notes
 //!
@@ -26,7 +27,9 @@ use crate::engine::{encode_loop, is_unicode_noncharacter};
 ///
 /// uses CSS hex escape syntax (`\XX`) with shortest hex representation.
 /// a trailing space is appended after the hex escape when the next character
-/// is a hex digit or whitespace, to prevent ambiguous parsing.
+/// is a hex digit or whitespace, and when the escape ends the output. a CSS
+/// escape consumes exactly one following whitespace character, so the space
+/// never changes the decoded value.
 ///
 /// unicode non-characters are replaced with `_`.
 ///
@@ -44,6 +47,8 @@ use crate::engine::{encode_loop, is_unicode_noncharacter};
 /// assert_eq!(for_css_string(r#"a"b"#), r"a\22 b");
 /// // z is not a hex digit, so no trailing space
 /// assert_eq!(for_css_string("a'z"), r"a\27z");
+/// // an escape at the end always gets one; the escape consumes it again
+/// assert_eq!(for_css_string(r#"a""#), r"a\22 ");
 /// ```
 pub fn for_css_string(input: &str) -> String {
     let mut out = String::with_capacity(input.len());
@@ -84,7 +89,7 @@ fn needs_css_string_encoding(c: char) -> bool {
 /// assert_eq!(for_css_url("image.png"), "image.png");
 /// // b is a hex digit, so trailing space after \27
 /// assert_eq!(for_css_url("a'b"), r"a\27 b");
-/// assert_eq!(for_css_url("a(b)"), r"a\28 b\29");
+/// assert_eq!(for_css_url("a(b)"), r"a\28 b\29 ");
 /// ```
 pub fn for_css_url(input: &str) -> String {
     let mut out = String::with_capacity(input.len());
@@ -133,12 +138,13 @@ fn write_css_encoded<W: fmt::Write>(out: &mut W, c: char, next: Option<char>) ->
     Ok(())
 }
 
-/// returns true if a trailing space is needed after a CSS hex escape
-/// to prevent ambiguous parsing with the next character.
+/// returns true if a trailing space is needed after a CSS hex escape to
+/// prevent ambiguous parsing with the next character, or — at the end of the
+/// input — with whatever the caller appends.
 fn needs_css_separator(next: Option<char>) -> bool {
     match next {
         Some(c) => c.is_ascii_hexdigit() || matches!(c, ' ' | '\t' | '\n' | '\x0C' | '\r'),
-        None => false,
+        None => true,
     }
 }
 
@@ -158,8 +164,8 @@ mod tests {
     fn css_string_encodes_double_quote() {
         // " (0x22) → \22, followed by space because 'b' is a hex digit
         assert_eq!(for_css_string(r#"a"b"#), r"a\22 b");
-        // " at end → no trailing space
-        assert_eq!(for_css_string(r#"a""#), r"a\22");
+        // " at end → separator space, absorbed by the escape on decode
+        assert_eq!(for_css_string(r#"a""#), r"a\22 ");
     }
 
     #[test]
@@ -178,7 +184,7 @@ mod tests {
     #[test]
     fn css_string_encodes_angle_brackets() {
         // x is not a hex digit, so no trailing space after \3c
-        assert_eq!(for_css_string("<x>"), r"\3cx\3e");
+        assert_eq!(for_css_string("<x>"), r"\3cx\3e ");
     }
 
     #[test]
@@ -188,7 +194,7 @@ mod tests {
 
     #[test]
     fn css_string_encodes_parens() {
-        assert_eq!(for_css_string("a(b)"), r"a\28 b\29");
+        assert_eq!(for_css_string("a(b)"), r"a\28 b\29 ");
     }
 
     #[test]
@@ -198,21 +204,21 @@ mod tests {
 
     #[test]
     fn css_string_encodes_control_chars() {
-        assert_eq!(for_css_string("\x00"), r"\0");
+        assert_eq!(for_css_string("\x00"), r"\0 ");
         assert_eq!(for_css_string("\x01x"), r"\1x");
-        assert_eq!(for_css_string("\x1F"), r"\1f");
+        assert_eq!(for_css_string("\x1F"), r"\1f ");
     }
 
     #[test]
     fn css_string_encodes_del() {
-        assert_eq!(for_css_string("\x7F"), r"\7f");
+        assert_eq!(for_css_string("\x7F"), r"\7f ");
     }
 
     #[test]
     fn css_string_encodes_c1_controls() {
-        assert_eq!(for_css_string("\u{0080}"), r"\80");
-        assert_eq!(for_css_string("\u{0085}"), r"\85");
-        assert_eq!(for_css_string("\u{009F}"), r"\9f");
+        assert_eq!(for_css_string("\u{0080}"), r"\80 ");
+        assert_eq!(for_css_string("\u{0085}"), r"\85 ");
+        assert_eq!(for_css_string("\u{009F}"), r"\9f ");
         // next char is hex digit → trailing space
         assert_eq!(for_css_string("\u{0080}a"), r"\80 a");
         // next char is not hex → no trailing space
@@ -221,8 +227,8 @@ mod tests {
 
     #[test]
     fn css_string_encodes_line_separators() {
-        assert_eq!(for_css_string("\u{2028}"), r"\2028");
-        assert_eq!(for_css_string("\u{2029}"), r"\2029");
+        assert_eq!(for_css_string("\u{2028}"), r"\2028 ");
+        assert_eq!(for_css_string("\u{2029}"), r"\2029 ");
     }
 
     #[test]
@@ -262,7 +268,7 @@ mod tests {
     #[test]
     fn css_url_encodes_space() {
         assert_eq!(for_css_url("a b"), r"a\20 b");
-        assert_eq!(for_css_url(" "), r"\20");
+        assert_eq!(for_css_url(" "), r"\20 ");
     }
 
     #[test]
@@ -285,8 +291,8 @@ mod tests {
 
     #[test]
     fn css_url_encodes_c1_controls() {
-        assert_eq!(for_css_url("\u{0080}"), r"\80");
-        assert_eq!(for_css_url("\u{0085}"), r"\85");
-        assert_eq!(for_css_url("\u{009F}"), r"\9f");
+        assert_eq!(for_css_url("\u{0080}"), r"\80 ");
+        assert_eq!(for_css_url("\u{0085}"), r"\85 ");
+        assert_eq!(for_css_url("\u{009F}"), r"\9f ");
     }
 }
