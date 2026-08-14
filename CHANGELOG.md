@@ -2,67 +2,29 @@
 
 ## Unreleased
 
-- **breaking:** the encoders that look at the following character no longer
-  treat the end of the input as "nothing follows". an encoder cannot see what
-  the caller appends, and `write_*` is a streaming sink, so two writes into one
-  string could previously reconstitute a sequence neither write contained
-- `for_js_template` now escapes a trailing `$` as `\$`. a value ending in `$`
-  followed by a `{` — a second write into the same sink, or literal template
-  source after the insertion point — reopened `${...}` interpolation
-- the CSS encoders now append a separator space after a hex escape that ends
-  the output. `for_css_string("a\"")` was `a\22`; appending `b` made `\22b`,
-  which CSS reads as U+022B rather than `"` followed by `b`. in `for_css_url`
-  that silently changed which URL was produced
-- decoded values are unchanged: `\$` is `$` in a template literal, and a CSS
-  escape consumes exactly one following whitespace character, so `\22 b` still
-  decodes to `"b`. only the encoded bytes differ, and only for inputs whose
-  last character is `$` (template) or needs escaping (CSS)
-- **every release through 0.8.0 is affected**
+- **breaking:** `for_js_template` now escapes a trailing `$`
+- **breaking:** the CSS encoders now append a separator space after a hex escape that ends the output
 
 ## [0.8.0] - 2026-08-10
 
-- **breaking:** the `<script>`-block encoders — `for_javascript`,
-  `for_javascript_block` and `for_js_template` — now escape `<` as `\x3c`, and
-  `for_json` escapes it as `\u003c`. escaping `/` stopped a literal
-  `</script>`, but not `<!--<script>`: that sequence walks the HTML tokenizer
-  into script-data-double-escaped state, where the block's own `</script>` no
-  longer closes it and the rest of the page is swallowed into the script
-  element. the payload contains no `/`, so `/`-escaping never saw it
-- text containing `<` still round-trips: `\x3c` and `\u003c` are `<` in a
-  JavaScript string, a template literal and a JSON string, so no decoded value
-  changes
-- `for_javascript_attribute` and `for_javascript_source` are unchanged — an
-  HTML attribute value and a standalone .js file are never tokenized as script
-  data, so the escaped states cannot arise there
-- **every release through 0.7.0 is affected**, on all four encoders. there are
-  no crates.io dependents, so this is recorded here rather than as an
-  advisory; upgrade to 0.8.0 to pick up the fix
+- **breaking:** the `<script>`-block encoders and `for_json` now escape `<` as `\x3c`/`\u003c`
 
 ## [0.7.0] - 2026-08-08
 
-- **breaking:** `for_css_url` now hex-escapes `(`, `)` and space (#49). a `)` in
-  an unquoted `url()` value could previously close the URL token and the
-  declaration block, injecting a declaration the template never contained; `(`
-  or a space produced a bad-url-token, whose remnants swallow everything up to
-  the next `)` in the stylesheet. the output is now always exactly one
-  url-token, which makes `for_css_url` a superset of `for_css_string` rather
-  than a relaxation of it, and safe inside `url("...")` as well as `url(...)`
-- URLs that genuinely contain parentheses or spaces still resolve — the CSS
-  parser unescapes `\28`, `\29` and `\20` back to the original characters
-  before the URL is used
+- **breaking:** `for_css_url` now hex-escapes `(`, `)` and space (#49)
 
 ## [0.6.0] - 2026-07-05
 
-- form-urlencoded encoder: `for_form_urlencoded`, `write_form_urlencoded`, `display_form_urlencoded` — percent-encodes values per the WHATWG URL Standard `application/x-www-form-urlencoded` byte serializer (space → `+`, `*-._` and alphanumerics pass through, everything else percent-encoded)
+- form-urlencoded encoder: `for_form_urlencoded`, `write_form_urlencoded`, `display_form_urlencoded`
 
 ## [0.5.0] - 2026-06-19
 
-- **breaking:** removed the Java, Go, Ruby, and Python literal encoders (`for_java`, `for_go_string`, `for_go_char`, `for_go_byte_string`, `for_ruby_string`, `for_python_string`, `for_python_bytes`, `for_python_raw_string`, and their `write_*`/`display_*` variants) — out of scope for this crate
-- URI path encoder: `for_uri_path`, `write_uri_path`, `display_uri_path` — percent-encodes untrusted input for URI paths per RFC 3986 section 3.3, preserving forward-slash separators while encoding all non-unreserved characters
+- **breaking:** removed the Java, Go, Ruby and Python literal encoders as out of scope
+- URI path encoder: `for_uri_path`, `write_uri_path`, `display_uri_path`
 
 ## [0.4.0] - 2026-06-08
 
-- `display_*` wrappers for all encoding contexts — zero-allocation `fmt::Display` types that delegate to the corresponding `write_*` function, enabling inline formatting via `format!`/`write!` without intermediate `String` allocation
+- `display_*` wrappers for all encoding contexts, delegating to `write_*` without an intermediate `String`
 
 ## [0.3.0] - 2026-04-26
 
@@ -71,7 +33,7 @@
 - CSS encoders (`for_css_string`, `for_css_url`) now encode C1 control characters (U+0080-U+009F), matching OWASP Java Encoder behaviour — U+0085 NEL in particular can affect CSS parsing
 - ES6 template literal encoder: `for_js_template` — escapes backticks and `${` interpolation markers for safe embedding inside template literals
 - writer-based variant for template literal encoder
-- **breaking:** `for_json` now escapes forward slash (`/`) as `\/` to prevent `</script>` breakout when JSON is embedded in HTML `<script>` blocks (RFC 8259 §7 permits `\/`)
+- **breaking:** `for_json` now escapes forward slash (`/`) as `\/`
 - JSON string encoder: `for_json` — distinct from JavaScript encoders (no `\'`, uses `\u00HH` instead of `\xHH`, mandatory U+2028/U+2029 encoding)
 - writer-based variant for JSON encoder
 - SQL string literal encoders: `for_sql` (standard double-quote escaping), `for_sql_backslash` (MySQL/MariaDB backslash escaping)
