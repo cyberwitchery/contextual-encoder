@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **breaking:** `for_js_template` now escapes `&` as `\x26`, as the other `<script>`-block encoders do
 - **breaking:** `for_cdata` now splits a `]` that ends the input, as it already splits `]]>`
 - **breaking:** `for_js_template` now escapes a trailing `$`
 - **breaking:** the CSS encoders now append a separator space after a hex escape that ends the output

@@ -461,6 +461,28 @@ fn safety_html_family() {
     });
 }
 
+/// the `<script>`-block encoders must emit neither a raw `<`, which moves an
+/// HTML tokenizer out of script data, nor a raw `&`, which an XHTML parser
+/// decodes as a character reference before javascript sees the text.
+#[test]
+fn safety_script_block_encoders() {
+    let encoders: &[(&str, ForFn)] = &[
+        ("javascript", for_javascript),
+        ("javascript_block", for_javascript_block),
+        ("js_template", for_js_template),
+    ];
+    let mut buf = [0u8; 4];
+    for c in scalars() {
+        let s = one(c, &mut buf);
+        for (name, enc) in encoders {
+            let out = enc(s);
+            if let Some(bad) = out.chars().find(|&c| matches!(c, '<' | '&')) {
+                panic!("{name}: raw {bad:?} in {out:?} for input {c:?}");
+            }
+        }
+    }
+}
+
 /// true if the char is a dangerous CSS char that must be hex-escaped, excluding
 /// backslash (which legitimately appears as the escape introducer) — see
 /// `css_backslashes_escaped` for that half of the invariant.

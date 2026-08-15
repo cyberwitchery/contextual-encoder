@@ -250,6 +250,21 @@ mod javascript {
         }
     }
 
+    // an XHTML parser decodes character references inside `<script>`, so a
+    // surviving `&` hands javascript a delimiter the encoder never saw
+    #[test]
+    fn entity_introducer_encoded() {
+        for input in ["&", "&#96;", "&#36;&#123;", "&amp;", "&grave;"] {
+            for (name, encoded) in [
+                ("javascript", for_javascript(input)),
+                ("javascript_block", for_javascript_block(input)),
+                ("js_template", for_js_template(input)),
+            ] {
+                assert!(!encoded.contains('&'), "{name}: {input:?} -> {encoded:?}");
+            }
+        }
+    }
+
     // an attribute value and a .js file are never tokenized as script data
     #[test]
     fn script_data_encoders_are_opt_in() {
@@ -410,6 +425,23 @@ mod js_template {
             for_js_template("</script><script>alert(1)</script>"),
             r"\x3c\/script>\x3cscript>alert(1)\x3c\/script>"
         );
+    }
+
+    // -- character references (XHTML decodes them inside `<script>`) --
+
+    #[test]
+    fn ampersand_escaped() {
+        assert_eq!(for_js_template("a&b"), r"a\x26b");
+        assert_eq!(for_js_template("&"), r"\x26");
+        assert_eq!(for_js_template("&&"), r"\x26\x26");
+    }
+
+    #[test]
+    fn entity_encoded_delimiters_cannot_decode() {
+        assert_eq!(for_js_template("&#96;"), r"\x26#96;");
+        assert_eq!(for_js_template("&grave;"), r"\x26grave;");
+        assert_eq!(for_js_template("&#36;&#123;"), r"\x26#36;\x26#123;");
+        assert_eq!(for_js_template("&#x60;"), r"\x26#x60;");
     }
 
     // -- backslash escaping --
