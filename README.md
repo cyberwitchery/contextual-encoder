@@ -87,6 +87,13 @@ alone stops a literal `</script>`, but not `<!--<script>`, which walks the
 HTML tokenizer into script-data-double-escaped state — where the block's real
 `</script>` no longer closes it.
 
+they also escape `&` as `\x26`. in an HTML5 document `<script>` content is raw
+text and character references are not decoded, so this matters only when the
+page is parsed as XML (`application/xhtml+xml`, XSLT output) — there the parser
+resolves them before JavaScript sees the text, so untrusted input containing
+the literal `&#96;` would arrive as a backtick that closes a template literal,
+and `&#36;&#123;` as a `${` that opens an interpolation.
+
 ### CSS
 
 | function | safe for | notes |

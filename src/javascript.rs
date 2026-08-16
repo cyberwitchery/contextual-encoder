@@ -23,6 +23,9 @@
 //!   for quotes (`\"`, `\'`) which are **not safe in HTML attribute contexts**.
 //! - `for_javascript_attribute` does not escape `<` or `/` and is **not safe
 //!   in `<script>` blocks** where `</script>` could appear.
+//! - `for_javascript_source` does not escape `&`, so it is **not safe in an
+//!   XHTML `<script>`**, where character references are decoded before
+//!   javascript sees the text. the other four encoders escape it.
 //! - none of these encoders produce valid JSON — the `\xHH` escapes they emit
 //!   for control characters are not permitted in JSON. use
 //!   [`for_json`](crate::for_json) for JSON string values.
@@ -226,6 +229,8 @@ pub fn write_javascript_source<W: fmt::Write>(out: &mut W, input: &str) -> fmt::
 /// - `\` → `\\`
 /// - `<` → `\x3c`, `/` → `\/` (keeps the HTML tokenizer in script data state,
 ///   so the enclosing `</script>` still closes the block)
+/// - `&` → `\x26` (stops an XHTML parser decoding a character reference into
+///   a `` ` `` or a `${` before javascript sees the text)
 /// - C0 controls → named escapes (`\b`, `\t`, `\n`, `\f`, `\r`) or hex
 ///   (`\xHH`)
 /// - U+2028 → `\u2028`, U+2029 → `\u2029` (line/paragraph separators)
@@ -241,6 +246,9 @@ pub fn write_javascript_source<W: fmt::Write>(out: &mut W, input: &str) -> fmt::
 /// assert_eq!(for_js_template("hello `world`"), r"hello \`world\`");
 /// assert_eq!(for_js_template("${alert(1)}"), r"\${alert(1)}");
 /// assert_eq!(for_js_template("safe"), "safe");
+/// // `\x26` is `&` in a template literal, so the decoded value is unchanged
+/// assert_eq!(for_js_template("a&b"), r"a\x26b");
+/// assert_eq!(for_js_template("&#96;"), r"\x26#96;");
 /// assert_eq!(for_js_template("a $ b"), "a $ b");
 /// // `\$` is `$` in a template literal, so the decoded value is unchanged
 /// assert_eq!(for_js_template("cost: $"), r"cost: \$");
@@ -266,7 +274,7 @@ pub fn write_js_template<W: fmt::Write>(out: &mut W, input: &str) -> fmt::Result
 fn needs_js_template_encoding(c: char) -> bool {
     matches!(
         c,
-        '\x00'..='\x1F' | '\\' | '`' | '$' | '/' | '<' | '\u{2028}' | '\u{2029}'
+        '\x00'..='\x1F' | '\\' | '`' | '$' | '&' | '/' | '<' | '\u{2028}' | '\u{2029}'
     )
 }
 
@@ -280,6 +288,7 @@ fn write_js_template_encoded<W: fmt::Write>(
         '`' => out.write_str("\\`"),
         '$' if matches!(next, Some('{') | None) => out.write_str("\\$"),
         '$' => out.write_char('$'),
+        '&' => out.write_str("\\x26"),
         '/' => out.write_str("\\/"),
         '<' => out.write_str("\\x3c"),
         // C0 controls, backslash, and line separators
