@@ -1,6 +1,6 @@
 # changelog
 
-## Unreleased
+## [0.9.0] - 2026-08-17
 
 - **breaking:** `for_js_template` now escapes `&` as `\x26`, as the other `<script>`-block encoders do
 - **breaking:** `for_cdata` now splits a `]` that ends the input, as it already splits `]]>`
