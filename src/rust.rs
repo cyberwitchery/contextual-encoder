@@ -4,6 +4,8 @@
 //!
 //! - [`for_rust_string`] — safe for rust string literals (`"..."`)
 //! - [`for_rust_char`] — safe for rust char literals (`'...'`)
+//! - [`for_rust_char_checked`] — as [`for_rust_char`], but rejects input that is
+//!   not exactly one character
 //! - [`for_rust_byte_string`] — safe for rust byte string literals (`b"..."`)
 //!
 //! # encoding rules
@@ -21,6 +23,12 @@
 //! | `for_rust_string` | `"` → `\"` | passes through |
 //! | `for_rust_char` | `'` → `\'` | passes through |
 //! | `for_rust_byte_string` | `"` → `\"` | each UTF-8 byte → `\xHH` |
+//!
+//! # char literal length
+//!
+//! a rust char literal holds exactly one unicode scalar value, so the char
+//! encoders require input of exactly one character. empty or longer input
+//! encodes to a literal body that does not compile.
 
 use std::fmt;
 
@@ -65,6 +73,10 @@ fn needs_rust_string_encoding(c: char) -> bool {
 
 /// encodes `input` for safe embedding in a rust char literal (`'...'`).
 ///
+/// `input` must be exactly one unicode scalar value; this function does not
+/// check, and any other input encodes to a literal body that does not
+/// compile. [`for_rust_char_checked`] reports that case instead.
+///
 /// escapes backslashes, single quotes, and control characters using rust's
 /// escape syntax. non-ASCII unicode passes through unchanged. unicode
 /// non-characters are replaced with space.
@@ -74,9 +86,9 @@ fn needs_rust_string_encoding(c: char) -> bool {
 /// ```
 /// use contextual_encoder::for_rust_char;
 ///
-/// assert_eq!(for_rust_char("it's"), r"it\'s");
-/// assert_eq!(for_rust_char(r#"a"b"#), r#"a"b"#);
-/// assert_eq!(for_rust_char("tab\there"), r"tab\there");
+/// assert_eq!(for_rust_char("'"), r"\'");
+/// assert_eq!(for_rust_char("\t"), r"\t");
+/// assert_eq!(for_rust_char("é"), "é");
 /// ```
 pub fn for_rust_char(input: &str) -> String {
     let mut out = String::with_capacity(input.len());
@@ -84,9 +96,34 @@ pub fn for_rust_char(input: &str) -> String {
     out
 }
 
+/// encodes `input` for a rust char literal (`'...'`), or returns `None` if
+/// `input` is not exactly one unicode scalar value.
+///
+/// the checked counterpart to [`for_rust_char`]; on `Some`, the encoding is
+/// identical. a grapheme cluster spelled with several scalar values, such as
+/// `"e\u{301}"`, is rejected — no char literal can hold it.
+///
+/// # examples
+///
+/// ```
+/// use contextual_encoder::for_rust_char_checked;
+///
+/// assert_eq!(for_rust_char_checked("'"), Some(r"\'".to_string()));
+/// assert_eq!(for_rust_char_checked("é"), Some("é".to_string()));
+/// assert_eq!(for_rust_char_checked("it's"), None);
+/// assert_eq!(for_rust_char_checked(""), None);
+/// ```
+pub fn for_rust_char_checked(input: &str) -> Option<String> {
+    let mut chars = input.chars();
+    match (chars.next(), chars.next()) {
+        (Some(_), None) => Some(for_rust_char(input)),
+        (None, _) | (Some(_), Some(_)) => None,
+    }
+}
+
 /// writes the rust-char-encoded form of `input` to `out`.
 ///
-/// see [`for_rust_char`] for encoding rules.
+/// see [`for_rust_char`] for encoding rules and the one-character contract.
 pub fn write_rust_char<W: fmt::Write>(out: &mut W, input: &str) -> fmt::Result {
     encode_loop(out, input, needs_rust_char_encoding, |out, c, _next| {
         write_rust_text_encoded(out, c, '\'')
@@ -255,6 +292,57 @@ mod tests {
         let mut w = String::new();
         write_rust_char(&mut w, input).unwrap();
         assert_eq!(for_rust_char(input), w);
+    }
+
+    // -- for_rust_char_checked --
+
+    #[test]
+    fn char_checked_rejects_empty() {
+        assert_eq!(for_rust_char_checked(""), None);
+    }
+
+    #[test]
+    fn char_checked_accepts_single() {
+        assert_eq!(for_rust_char_checked("a"), Some("a".to_string()));
+        assert_eq!(for_rust_char_checked(" "), Some(" ".to_string()));
+    }
+
+    #[test]
+    fn char_checked_rejects_multi() {
+        assert_eq!(for_rust_char_checked("ab"), None);
+        assert_eq!(for_rust_char_checked("it's"), None);
+        assert_eq!(for_rust_char_checked("hello world"), None);
+    }
+
+    #[test]
+    fn char_checked_rejects_multi_scalar_grapheme() {
+        assert_eq!(for_rust_char_checked("e\u{301}"), None);
+    }
+
+    #[test]
+    fn char_checked_escapes_single() {
+        assert_eq!(for_rust_char_checked("'"), Some(r"\'".to_string()));
+        assert_eq!(for_rust_char_checked("\\"), Some(r"\\".to_string()));
+        assert_eq!(for_rust_char_checked("\0"), Some(r"\0".to_string()));
+        assert_eq!(for_rust_char_checked("\n"), Some(r"\n".to_string()));
+        assert_eq!(for_rust_char_checked("\x01"), Some(r"\x01".to_string()));
+        assert_eq!(for_rust_char_checked("\u{FDD0}"), Some(" ".to_string()));
+    }
+
+    #[test]
+    fn char_checked_accepts_non_ascii() {
+        assert_eq!(for_rust_char_checked("é"), Some("é".to_string()));
+        assert_eq!(for_rust_char_checked("日"), Some("日".to_string()));
+        assert_eq!(for_rust_char_checked("😀"), Some("😀".to_string()));
+    }
+
+    #[test]
+    fn char_checked_matches_unchecked_when_accepted() {
+        for input in [
+            "a", "'", "\\", "\0", "\t", "\n", "\r", "\x01", "\x7F", "é", "😀",
+        ] {
+            assert_eq!(for_rust_char_checked(input), Some(for_rust_char(input)));
+        }
     }
 
     // -- for_rust_byte_string --

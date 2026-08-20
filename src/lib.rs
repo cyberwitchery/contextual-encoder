@@ -98,7 +98,8 @@
 //! |----------|----------|
 //! | [`for_json`] | JSON string values |
 //! | [`for_rust_string`] | Rust string literals (`"..."`) |
-//! | [`for_rust_char`] | Rust char literals (`'...'`) |
+//! | [`for_rust_char`] | Rust char literals (`'...'`), input must be exactly one character |
+//! | [`for_rust_char_checked`] | Rust char literals, `None` unless the input is exactly one character |
 //! | [`for_rust_byte_string`] | Rust byte string literals (`b"..."`) |
 //! | [`for_sql`] | Standard SQL string literals (`'...'`) |
 //! | [`for_sql_backslash`] | MySQL/MariaDB string literals with backslash escaping (`'...'`) |
@@ -136,9 +137,9 @@
 //!
 //! # writer-based API
 //!
-//! every `for_*` function has a corresponding `write_*` function that writes
-//! to any `std::fmt::Write` implementor, avoiding allocation when writing to
-//! an existing buffer:
+//! every `for_*` function except [`for_rust_char_checked`] has a corresponding
+//! `write_*` function that writes to any `std::fmt::Write` implementor,
+//! avoiding allocation when writing to an existing buffer:
 //!
 //! ```
 //! use contextual_encoder::write_html;
@@ -150,7 +151,7 @@
 //!
 //! # display wrappers
 //!
-//! every `for_*` function also has a corresponding `display_*` function that
+//! those same functions each have a corresponding `display_*` function that
 //! returns a zero-allocation [`Display`](std::fmt::Display) wrapper. use these
 //! when embedding encoded output inline in `format!` or `write!`:
 //!
@@ -197,8 +198,8 @@ pub use javascript::{
 };
 pub use json::{for_json, write_json};
 pub use rust::{
-    for_rust_byte_string, for_rust_char, for_rust_string, write_rust_byte_string, write_rust_char,
-    write_rust_string,
+    for_rust_byte_string, for_rust_char, for_rust_char_checked, for_rust_string,
+    write_rust_byte_string, write_rust_char, write_rust_string,
 };
 pub use sql::{for_sql, for_sql_backslash, write_sql, write_sql_backslash};
 pub use uri::{

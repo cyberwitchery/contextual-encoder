@@ -1840,6 +1840,28 @@ mod rust_literals {
         assert_eq!(for_rust_char(input), w);
     }
 
+    // -- for_rust_char_checked --
+
+    #[test]
+    fn char_checked_requires_exactly_one_character() {
+        assert_eq!(for_rust_char_checked(""), None);
+        assert_eq!(for_rust_char_checked("ab"), None);
+        assert_eq!(for_rust_char_checked("it's"), None);
+        assert_eq!(for_rust_char_checked("e\u{301}"), None);
+        assert_eq!(for_rust_char_checked("a"), Some("a".to_string()));
+    }
+
+    #[test]
+    fn char_checked_encodes_like_for_rust_char() {
+        assert_eq!(for_rust_char_checked("'"), Some(r"\'".to_string()));
+        assert_eq!(for_rust_char_checked("\\"), Some(r"\\".to_string()));
+        assert_eq!(for_rust_char_checked("\t"), Some(r"\t".to_string()));
+        assert_eq!(for_rust_char_checked("\x7F"), Some(r"\x7f".to_string()));
+        assert_eq!(for_rust_char_checked("\u{FDD0}"), Some(" ".to_string()));
+        assert_eq!(for_rust_char_checked("é"), Some("é".to_string()));
+        assert_eq!(for_rust_char_checked("😀"), Some("😀".to_string()));
+    }
+
     // -- for_rust_byte_string --
 
     #[test]

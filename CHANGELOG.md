@@ -1,5 +1,10 @@
 # changelog
 
+## Unreleased
+
+- `for_rust_char_checked`: encodes for a Rust char literal, or returns `None` when the input is not exactly one character (#63)
+- `for_rust_char` now documents that its input must be exactly one character, and its examples no longer show multi-character input that cannot compile in a char literal (#63)
+
 ## [0.9.0] - 2026-08-17
 
 - **breaking:** `for_js_template` now escapes `&` as `\x26`, as the other `<script>`-block encoders do
