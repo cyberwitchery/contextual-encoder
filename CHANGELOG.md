@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **breaking:** `for_rust_string` and `for_rust_char` now escape the bidirectional formatting characters (U+202A-U+202E, U+2066-U+2069) as `\u{HHHH}`. emitted raw they made the literal a hard `rustc` error, and hid a Trojan Source direction override in the generated code
 - `for_rust_char_checked`: encodes for a Rust char literal, or returns `None` when the input is not exactly one character (#63)
 - `for_rust_char` now documents that its input must be exactly one character, and its examples no longer show multi-character input that cannot compile in a char literal (#63)
 

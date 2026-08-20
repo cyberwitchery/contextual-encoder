@@ -1862,6 +1862,47 @@ mod rust_literals {
         assert_eq!(for_rust_char_checked("😀"), Some("😀".to_string()));
     }
 
+    // -- trojan source (CVE-2021-42574) --
+
+    /// the codepoints `rustc` rejects raw in a literal, with their escaped forms.
+    const TEXT_DIRECTION: [(&str, &str); 9] = [
+        ("\u{202A}", r"\u{202a}"),
+        ("\u{202B}", r"\u{202b}"),
+        ("\u{202C}", r"\u{202c}"),
+        ("\u{202D}", r"\u{202d}"),
+        ("\u{202E}", r"\u{202e}"),
+        ("\u{2066}", r"\u{2066}"),
+        ("\u{2067}", r"\u{2067}"),
+        ("\u{2068}", r"\u{2068}"),
+        ("\u{2069}", r"\u{2069}"),
+    ];
+
+    #[test]
+    fn text_direction_controls_never_reach_a_string_literal_raw() {
+        for (raw, escaped) in TEXT_DIRECTION {
+            assert_eq!(for_rust_string(raw), escaped);
+            assert!(!for_rust_string(&format!("hi{raw}there")).contains(raw));
+        }
+    }
+
+    #[test]
+    fn text_direction_controls_never_reach_a_char_literal_raw() {
+        for (raw, escaped) in TEXT_DIRECTION {
+            assert_eq!(for_rust_char(raw), escaped);
+            assert_eq!(for_rust_char_checked(raw), Some(escaped.to_string()));
+        }
+    }
+
+    #[test]
+    fn text_direction_neighbours_still_pass_through() {
+        for raw in [
+            "\u{2029}", "\u{202F}", "\u{2065}", "\u{206A}", "\u{200E}", "\u{200F}",
+        ] {
+            assert_eq!(for_rust_string(raw), raw);
+            assert_eq!(for_rust_char(raw), raw);
+        }
+    }
+
     // -- for_rust_byte_string --
 
     #[test]

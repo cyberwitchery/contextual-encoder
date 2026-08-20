@@ -15,6 +15,8 @@
 //! - named escapes: `\0`, `\t`, `\n`, `\r`, `\\`
 //! - C0 controls and DEL without named escapes → `\xHH`
 //! - unicode non-characters → space (string/char) or `\xHH` per byte (byte string)
+//! - bidi formatting controls → `\u{HHHH}` (string/char) or `\xHH` per byte
+//!   (byte string)
 //!
 //! the encoders differ in which quote is escaped and how non-ASCII is handled:
 //!
@@ -41,7 +43,9 @@ use crate::engine::{
 ///
 /// escapes backslashes, double quotes, and control characters using rust's
 /// escape syntax. non-ASCII unicode passes through unchanged (valid in rust
-/// string literals). unicode non-characters are replaced with space.
+/// string literals). unicode non-characters are replaced with space, and the
+/// bidi formatting controls `rustc` rejects raw in a literal are escaped as
+/// `\u{HHHH}`.
 ///
 /// # examples
 ///
@@ -51,6 +55,7 @@ use crate::engine::{
 /// assert_eq!(for_rust_string(r#"say "hi""#), r#"say \"hi\""#);
 /// assert_eq!(for_rust_string("line\nbreak"), r"line\nbreak");
 /// assert_eq!(for_rust_string("café"), "café");
+/// assert_eq!(for_rust_string("a\u{202E}b"), r"a\u{202e}b");
 /// ```
 pub fn for_rust_string(input: &str) -> String {
     let mut out = String::with_capacity(input.len());
@@ -68,7 +73,9 @@ pub fn write_rust_string<W: fmt::Write>(out: &mut W, input: &str) -> fmt::Result
 }
 
 fn needs_rust_string_encoding(c: char) -> bool {
-    matches!(c, '\x00'..='\x1F' | '\x7F' | '"' | '\\') || is_unicode_noncharacter(c as u32)
+    matches!(c, '\x00'..='\x1F' | '\x7F' | '"' | '\\')
+        || is_unicode_noncharacter(c as u32)
+        || is_text_direction_control(c)
 }
 
 /// encodes `input` for safe embedding in a rust char literal (`'...'`).
@@ -79,7 +86,8 @@ fn needs_rust_string_encoding(c: char) -> bool {
 ///
 /// escapes backslashes, single quotes, and control characters using rust's
 /// escape syntax. non-ASCII unicode passes through unchanged. unicode
-/// non-characters are replaced with space.
+/// non-characters are replaced with space, and the bidi formatting controls
+/// `rustc` rejects raw in a literal are escaped as `\u{HHHH}`.
 ///
 /// # examples
 ///
@@ -89,6 +97,7 @@ fn needs_rust_string_encoding(c: char) -> bool {
 /// assert_eq!(for_rust_char("'"), r"\'");
 /// assert_eq!(for_rust_char("\t"), r"\t");
 /// assert_eq!(for_rust_char("é"), "é");
+/// assert_eq!(for_rust_char("\u{202E}"), r"\u{202e}");
 /// ```
 pub fn for_rust_char(input: &str) -> String {
     let mut out = String::with_capacity(input.len());
@@ -131,7 +140,15 @@ pub fn write_rust_char<W: fmt::Write>(out: &mut W, input: &str) -> fmt::Result {
 }
 
 fn needs_rust_char_encoding(c: char) -> bool {
-    matches!(c, '\x00'..='\x1F' | '\x7F' | '\'' | '\\') || is_unicode_noncharacter(c as u32)
+    matches!(c, '\x00'..='\x1F' | '\x7F' | '\'' | '\\')
+        || is_unicode_noncharacter(c as u32)
+        || is_text_direction_control(c)
+}
+
+/// returns true for the bidi formatting characters `rustc` rejects raw inside a
+/// literal (the deny-by-default `text_direction_codepoint_in_literal` lint).
+fn is_text_direction_control(c: char) -> bool {
+    matches!(c, '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}')
 }
 
 /// writes the encoded form of a character for rust string or char context.
@@ -146,6 +163,7 @@ fn write_rust_text_encoded<W: fmt::Write>(out: &mut W, c: char, quote: char) -> 
         '"' if quote == '"' => out.write_str("\\\""),
         '\'' if quote == '\'' => out.write_str("\\'"),
         c if is_unicode_noncharacter(c as u32) => out.write_char(' '),
+        c if is_text_direction_control(c) => write!(out, "\\u{{{:04x}}}", c as u32),
         // other C0 controls and DEL
         c => write!(out, "\\x{:02x}", c as u32),
     }
@@ -235,6 +253,27 @@ mod tests {
         assert_eq!(for_rust_string("\u{FFFE}"), " ");
     }
 
+    /// the codepoints `rustc` denies raw in a literal, with their escaped forms.
+    const TEXT_DIRECTION: [(&str, &str); 9] = [
+        ("\u{202A}", r"\u{202a}"),
+        ("\u{202B}", r"\u{202b}"),
+        ("\u{202C}", r"\u{202c}"),
+        ("\u{202D}", r"\u{202d}"),
+        ("\u{202E}", r"\u{202e}"),
+        ("\u{2066}", r"\u{2066}"),
+        ("\u{2067}", r"\u{2067}"),
+        ("\u{2068}", r"\u{2068}"),
+        ("\u{2069}", r"\u{2069}"),
+    ];
+
+    #[test]
+    fn string_escapes_text_direction_controls() {
+        for (raw, escaped) in TEXT_DIRECTION {
+            assert_eq!(for_rust_string(raw), escaped);
+            assert_eq!(for_rust_string(&format!("a{raw}b")), format!("a{escaped}b"));
+        }
+    }
+
     #[test]
     fn string_writer_matches() {
         let input = "test\0\"\\\n café";
@@ -284,6 +323,13 @@ mod tests {
     #[test]
     fn char_nonchars_replaced() {
         assert_eq!(for_rust_char("\u{FDD0}"), " ");
+    }
+
+    #[test]
+    fn char_escapes_text_direction_controls() {
+        for (raw, escaped) in TEXT_DIRECTION {
+            assert_eq!(for_rust_char(raw), escaped);
+        }
     }
 
     #[test]
@@ -337,9 +383,17 @@ mod tests {
     }
 
     #[test]
+    fn char_checked_escapes_text_direction_controls() {
+        for (raw, escaped) in TEXT_DIRECTION {
+            assert_eq!(for_rust_char_checked(raw), Some(escaped.to_string()));
+        }
+    }
+
+    #[test]
     fn char_checked_matches_unchecked_when_accepted() {
         for input in [
-            "a", "'", "\\", "\0", "\t", "\n", "\r", "\x01", "\x7F", "é", "😀",
+            "a", "'", "\\", "\0", "\t", "\n", "\r", "\x01", "\x7F", "é", "😀", "\u{202E}",
+            "\u{2069}",
         ] {
             assert_eq!(for_rust_char_checked(input), Some(for_rust_char(input)));
         }
@@ -393,6 +447,12 @@ mod tests {
     fn byte_string_nonchars_as_bytes() {
         // U+FDD0 → UTF-8: EF B7 90
         assert_eq!(for_rust_byte_string("\u{FDD0}"), r"\xef\xb7\x90");
+    }
+
+    #[test]
+    fn byte_string_text_direction_controls_as_bytes() {
+        assert_eq!(for_rust_byte_string("\u{202E}"), r"\xe2\x80\xae");
+        assert_eq!(for_rust_byte_string("\u{2069}"), r"\xe2\x81\xa9");
     }
 
     #[test]
