@@ -26,13 +26,16 @@
 //! - `for_javascript_source` does not escape `&`, so it is **not safe in an
 //!   XHTML `<script>`**, where character references are decoded before
 //!   javascript sees the text. the other four encoders escape it.
+//! - all five encoders escape the bidi formatting controls (U+202A-U+202E,
+//!   U+2066-U+2069) as `\uHHHH`, so a direction override in the data cannot
+//!   reorder how the generated javascript reads.
 //! - none of these encoders produce valid JSON — the `\xHH` escapes they emit
 //!   for control characters are not permitted in JSON. use
 //!   [`for_json`](crate::for_json) for JSON string values.
 
 use std::fmt;
 
-use crate::engine::encode_loop;
+use crate::engine::{encode_loop, is_text_direction_control};
 
 /// configuration flags controlling context-specific encoding differences.
 #[derive(Clone, Copy)]
@@ -88,6 +91,7 @@ const JS_SOURCE: JsConfig = JsConfig {
 ///   so the enclosing `</script>` still closes the block)
 /// - `\` → `\\`
 /// - U+2028 → `\u2028`, U+2029 → `\u2029` (javascript line terminators)
+/// - bidi formatting controls (U+202A-U+202E, U+2066-U+2069) → `\uHHHH`
 ///
 /// # caveat: template literals
 ///
@@ -234,6 +238,7 @@ pub fn write_javascript_source<W: fmt::Write>(out: &mut W, input: &str) -> fmt::
 /// - C0 controls → named escapes (`\b`, `\t`, `\n`, `\f`, `\r`) or hex
 ///   (`\xHH`)
 /// - U+2028 → `\u2028`, U+2029 → `\u2029` (line/paragraph separators)
+/// - bidi formatting controls (U+202A-U+202E, U+2066-U+2069) → `\uHHHH`
 ///
 /// unlike the string literal encoders, this does **not** escape `"` or `'`
 /// (they are ordinary characters inside template literals).
@@ -275,7 +280,7 @@ fn needs_js_template_encoding(c: char) -> bool {
     matches!(
         c,
         '\x00'..='\x1F' | '\\' | '`' | '$' | '&' | '/' | '<' | '\u{2028}' | '\u{2029}'
-    )
+    ) || is_text_direction_control(c)
 }
 
 fn write_js_template_encoded<W: fmt::Write>(
@@ -291,7 +296,6 @@ fn write_js_template_encoded<W: fmt::Write>(
         '&' => out.write_str("\\x26"),
         '/' => out.write_str("\\/"),
         '<' => out.write_str("\\x3c"),
-        // C0 controls, backslash, and line separators
         c => write_js_shared_escape(out, c),
     }
 }
@@ -316,7 +320,7 @@ fn needs_js_encoding(c: char, config: &JsConfig) -> bool {
         '\x00'..='\x1F' | '\\' | '"' | '\'' | '\u{2028}' | '\u{2029}' => true,
         '&' => config.encode_ampersand,
         '/' | '<' => config.script_data,
-        _ => false,
+        c => is_text_direction_control(c),
     }
 }
 
@@ -330,14 +334,13 @@ fn write_js_encoded<W: fmt::Write>(out: &mut W, c: char, config: &JsConfig) -> f
         '&' => out.write_str("\\x26"),
         '/' => out.write_str("\\/"),
         '<' => out.write_str("\\x3c"),
-        // C0 controls, backslash, and line separators
         c => write_js_shared_escape(out, c),
     }
 }
 
-/// writes the C0-control/backslash/line-separator escape shared by both js
-/// encoders. any other character falls back to `\u{...}` so a character a
-/// predicate flags can never be dropped from the output.
+/// writes the escape shared by both js encoders. any other character falls back
+/// to `\u{...}` so a character a predicate flags can never be dropped from the
+/// output.
 fn write_js_shared_escape<W: fmt::Write>(out: &mut W, c: char) -> fmt::Result {
     match c {
         '\x08' => out.write_str("\\b"),
@@ -350,6 +353,7 @@ fn write_js_shared_escape<W: fmt::Write>(out: &mut W, c: char) -> fmt::Result {
         '\u{2028}' => out.write_str("\\u2028"),
         '\u{2029}' => out.write_str("\\u2029"),
         '\x00'..='\x1F' => write!(out, "\\x{:02x}", c as u32),
+        c if is_text_direction_control(c) => write!(out, "\\u{:04x}", c as u32),
         c => write!(out, "\\u{{{:x}}}", c as u32),
     }
 }
@@ -357,6 +361,19 @@ fn write_js_shared_escape<W: fmt::Write>(out: &mut W, c: char) -> fmt::Result {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// the bidi formatting controls, with their escaped forms.
+    const TEXT_DIRECTION: [(&str, &str); 9] = [
+        ("\u{202A}", r"\u202a"),
+        ("\u{202B}", r"\u202b"),
+        ("\u{202C}", r"\u202c"),
+        ("\u{202D}", r"\u202d"),
+        ("\u{202E}", r"\u202e"),
+        ("\u{2066}", r"\u2066"),
+        ("\u{2067}", r"\u2067"),
+        ("\u{2068}", r"\u2068"),
+        ("\u{2069}", r"\u2069"),
+    ];
 
     // -- for_javascript (universal) --
 
@@ -415,6 +432,14 @@ mod tests {
     }
 
     #[test]
+    fn js_escapes_text_direction_controls() {
+        for (raw, escaped) in TEXT_DIRECTION {
+            assert_eq!(for_javascript(raw), escaped);
+            assert_eq!(for_javascript(&format!("a{raw}b")), format!("a{escaped}b"));
+        }
+    }
+
+    #[test]
     fn js_preserves_non_ascii() {
         assert_eq!(for_javascript("café"), "café");
         assert_eq!(for_javascript("日本語"), "日本語");
@@ -445,6 +470,13 @@ mod tests {
         assert_eq!(for_javascript_attribute("a&b"), r"a\x26b");
     }
 
+    #[test]
+    fn js_attr_escapes_text_direction_controls() {
+        for (raw, escaped) in TEXT_DIRECTION {
+            assert_eq!(for_javascript_attribute(raw), escaped);
+        }
+    }
+
     // -- for_javascript_block --
 
     #[test]
@@ -471,6 +503,13 @@ mod tests {
         assert_eq!(for_javascript_block("a&b"), r"a\x26b");
     }
 
+    #[test]
+    fn js_block_escapes_text_direction_controls() {
+        for (raw, escaped) in TEXT_DIRECTION {
+            assert_eq!(for_javascript_block(raw), escaped);
+        }
+    }
+
     // -- for_javascript_source --
 
     #[test]
@@ -488,6 +527,17 @@ mod tests {
     #[test]
     fn js_source_encodes_line_separators() {
         assert_eq!(for_javascript_source("\u{2028}"), r"\u2028");
+    }
+
+    #[test]
+    fn js_source_escapes_text_direction_controls() {
+        for (raw, escaped) in TEXT_DIRECTION {
+            assert_eq!(for_javascript_source(raw), escaped);
+            assert_eq!(
+                for_javascript_source(&format!("var x = '{raw}';")),
+                format!(r"var x = \'{escaped}\';")
+            );
+        }
     }
 
     // -- for_js_template --
@@ -558,6 +608,14 @@ mod tests {
         assert_eq!(for_js_template("\x0C"), r"\f");
         assert_eq!(for_js_template("\r"), r"\r");
         assert_eq!(for_js_template("\x1F"), r"\x1f");
+    }
+
+    #[test]
+    fn js_template_escapes_text_direction_controls() {
+        for (raw, escaped) in TEXT_DIRECTION {
+            assert_eq!(for_js_template(raw), escaped);
+            assert_eq!(for_js_template(&format!("a{raw}b")), format!("a{escaped}b"));
+        }
     }
 
     #[test]

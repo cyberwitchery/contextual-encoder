@@ -3,6 +3,7 @@
 ## Unreleased
 
 - **breaking:** `for_rust_string` and `for_rust_char` now escape the bidirectional formatting characters (U+202A-U+202E, U+2066-U+2069) as `\u{HHHH}`. emitted raw they made the literal a hard `rustc` error, and hid a Trojan Source direction override in the generated code
+- **breaking:** the javascript encoders (`for_javascript`, `for_javascript_attribute`, `for_javascript_block`, `for_javascript_source`, `for_js_template`) now escape the bidirectional formatting characters (U+202A-U+202E, U+2066-U+2069) as `\uHHHH`. emitted raw they hid a Trojan Source direction override in the generated javascript
 - `for_rust_char_checked`: encodes for a Rust char literal, or returns `None` when the input is not exactly one character (#63)
 - `for_rust_char` now documents that its input must be exactly one character, and its examples no longer show multi-character input that cannot compile in a char literal (#63)
 - the `display_*` wrappers now honour width, fill/alignment and precision, so `format!("{:>12}", display_html(s))` pads exactly as `format!("{:>12}", for_html(s))` does; any format spec used to be silently ignored
