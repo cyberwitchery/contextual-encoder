@@ -124,8 +124,9 @@ untrusted strings for safe embedding in source code literals.
 
 | function | safe for | notes |
 |----------|----------|-------|
-| `for_rust_string` | Rust string literals (`"..."`) | `\xHH` for controls, non-ASCII passes through |
-| `for_rust_char` | Rust char literals (`'...'`) | escapes `'` instead of `"` |
+| `for_rust_string` | Rust string literals (`"..."`) | `\xHH` for controls, `\u{HHHH}` for the bidi controls `rustc` rejects raw, other non-ASCII passes through |
+| `for_rust_char` | Rust char literals (`'...'`) | escapes `'` instead of `"`; input must be exactly one character |
+| `for_rust_char_checked` | Rust char literals (`'...'`) | as `for_rust_char`, but returns `None` unless the input is exactly one character |
 | `for_rust_byte_string` | Rust byte string literals (`b"..."`) | non-ASCII → `\xHH` per UTF-8 byte |
 
 #### SQL
