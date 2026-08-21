@@ -1,5 +1,9 @@
 # changelog
 
+## Unreleased
+
+- the `display_*` wrappers now honour width, fill/alignment and precision, so `format!("{:>12}", display_html(s))` pads exactly as `format!("{:>12}", for_html(s))` does; any format spec used to be silently ignored
+
 ## [0.9.0] - 2026-08-17
 
 - **breaking:** `for_js_template` now escapes `&` as `\x26`, as the other `<script>`-block encoders do
