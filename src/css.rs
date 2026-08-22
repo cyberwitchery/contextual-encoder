@@ -18,6 +18,9 @@
 //!   structure separately.
 //! - for `url()` values, the URL itself must be validated (scheme whitelist,
 //!   etc.) before encoding. encoding only prevents syntax breakout.
+//! - both encoders escape the bidi formatting controls (U+202A-U+202E,
+//!   U+2066-U+2069), so a direction override in the data cannot reorder how the
+//!   surrounding stylesheet source reads.
 
 use std::fmt;
 
@@ -36,7 +39,8 @@ use crate::engine::{encode_loop, is_unicode_noncharacter};
 /// # encoded characters
 ///
 /// C0 controls (U+0000-U+001F), `"`, `'`, `\`, `<`, `&`, `(`, `)`, `/`,
-/// `>`, DEL (U+007F), C1 controls (U+0080-U+009F), U+2028, U+2029.
+/// `>`, DEL (U+007F), C1 controls (U+0080-U+009F), U+2028, U+2029, and the
+/// bidi formatting controls (U+202A-U+202E, U+2066-U+2069).
 ///
 /// # examples
 ///
@@ -49,6 +53,7 @@ use crate::engine::{encode_loop, is_unicode_noncharacter};
 /// assert_eq!(for_css_string("a'z"), r"a\27z");
 /// // an escape at the end always gets one; the escape consumes it again
 /// assert_eq!(for_css_string(r#"a""#), r"a\22 ");
+/// assert_eq!(for_css_string("a\u{202E}b"), r"a\202e b");
 /// ```
 pub fn for_css_string(input: &str) -> String {
     let mut out = String::with_capacity(input.len());
@@ -116,6 +121,8 @@ fn needs_css_common_encoding(c: char) -> bool {
         || (0x7F..=0x9F).contains(&cp) // DEL + C1 controls
         || cp == 0x2028
         || cp == 0x2029
+        || (0x202A..=0x202E).contains(&cp) // bidi embeddings and overrides
+        || (0x2066..=0x2069).contains(&cp) // bidi isolates
         || is_unicode_noncharacter(cp)
 }
 
@@ -151,6 +158,19 @@ fn needs_css_separator(next: Option<char>) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// the bidi formatting controls, with their escaped forms.
+    const TEXT_DIRECTION: [(&str, &str); 9] = [
+        ("\u{202A}", r"\202a"),
+        ("\u{202B}", r"\202b"),
+        ("\u{202C}", r"\202c"),
+        ("\u{202D}", r"\202d"),
+        ("\u{202E}", r"\202e"),
+        ("\u{2066}", r"\2066"),
+        ("\u{2067}", r"\2067"),
+        ("\u{2068}", r"\2068"),
+        ("\u{2069}", r"\2069"),
+    ];
 
     // -- for_css_string --
 
@@ -232,6 +252,23 @@ mod tests {
     }
 
     #[test]
+    fn css_string_encodes_text_direction_controls() {
+        for (raw, escaped) in TEXT_DIRECTION {
+            assert_eq!(for_css_string(&format!("a{raw}z")), format!("a{escaped}z"));
+        }
+    }
+
+    #[test]
+    fn css_string_text_direction_separator() {
+        for (raw, escaped) in TEXT_DIRECTION {
+            // b is a hex digit, z is not
+            assert_eq!(for_css_string(&format!("{raw}b")), format!("{escaped} b"));
+            assert_eq!(for_css_string(&format!("{raw}z")), format!("{escaped}z"));
+            assert_eq!(for_css_string(raw), format!("{escaped} "));
+        }
+    }
+
+    #[test]
     fn css_string_replaces_nonchars_with_underscore() {
         assert_eq!(for_css_string("\u{FDD0}"), "_");
         assert_eq!(for_css_string("\u{FFFE}"), "_");
@@ -294,5 +331,14 @@ mod tests {
         assert_eq!(for_css_url("\u{0080}"), r"\80 ");
         assert_eq!(for_css_url("\u{0085}"), r"\85 ");
         assert_eq!(for_css_url("\u{009F}"), r"\9f ");
+    }
+
+    #[test]
+    fn css_url_encodes_text_direction_controls() {
+        for (raw, escaped) in TEXT_DIRECTION {
+            assert_eq!(for_css_url(&format!("a{raw}z")), format!("a{escaped}z"));
+            assert_eq!(for_css_url(&format!("{raw}b")), format!("{escaped} b"));
+            assert_eq!(for_css_url(raw), format!("{escaped} "));
+        }
     }
 }

@@ -98,7 +98,7 @@ and `&#36;&#123;` as a `${` that opens an interpolation.
 
 | function | safe for | notes |
 |----------|----------|-------|
-| `for_css_string` | quoted CSS string values | hex escapes with separator spaces, including at the end |
+| `for_css_string` | quoted CSS string values | hex escapes with separator spaces, including at the end; escapes the bidi formatting controls |
 | `for_css_url` | CSS `url()` values, quoted or unquoted | like `for_css_string` plus space — output is always one url-token |
 
 ### URI

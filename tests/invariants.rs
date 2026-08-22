@@ -493,6 +493,8 @@ fn css_forbidden_raw(c: char) -> bool {
         || (0x7F..=0x9F).contains(&cp)
         || cp == 0x2028
         || cp == 0x2029
+        || (0x202A..=0x202E).contains(&cp)
+        || (0x2066..=0x2069).contains(&cp)
         || is_noncharacter(cp)
 }
 
