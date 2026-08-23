@@ -146,6 +146,9 @@ cannot make them safe:
 - **event handler names** — validate against a whitelist
 - **raw JavaScript expressions** — no encoder can make `eval()` safe
 - **raw CSS selectors / properties** — validate structure separately
+- **dynamic SQL identifiers (table / column names)** — `for_sql` encodes a
+  string literal (`'...'`), not an identifier (`"..."` or `` `...` ``);
+  validate against a whitelist
 - **HTML comments** — vendor-specific extensions (e.g., IE conditional
   comments) make safe encoding impractical
 - **full untrusted URLs** — `for_uri_component` encodes a component, not a

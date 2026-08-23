@@ -41,8 +41,12 @@
 //! # security notes
 //!
 //! - **parameterized queries are always preferred.** these encoders exist for
-//!   cases where parameterized queries are not possible (e.g. DDL, dynamic
-//!   identifiers, legacy code).
+//!   cases where parameterized queries are not possible (e.g. string literals
+//!   in DDL, legacy code).
+//! - **identifiers cannot be encoded.** these encoders are for string literal
+//!   values. a table or column name is delimited by `"..."` (standard) or
+//!   `` `...` `` (MySQL), and neither delimiter is escaped — both pass through
+//!   unchanged. validate an untrusted identifier against a whitelist instead.
 //! - **know your dialect.** use `for_sql` for databases that follow the SQL
 //!   standard (PostgreSQL, SQLite, SQL Server, Oracle). use
 //!   `for_sql_backslash` for MySQL/MariaDB when `NO_BACKSLASH_ESCAPES` is
@@ -193,6 +197,11 @@ mod tests {
     }
 
     #[test]
+    fn sql_backtick_passes_through() {
+        assert_eq!(for_sql("a`b"), "a`b");
+    }
+
+    #[test]
     fn sql_removes_nul() {
         assert_eq!(for_sql("before\x00after"), "beforeafter");
         assert_eq!(for_sql("\x00"), "");
@@ -290,6 +299,11 @@ mod tests {
     #[test]
     fn backslash_double_quote_passes_through() {
         assert_eq!(for_sql_backslash(r#"a"b"#), r#"a"b"#);
+    }
+
+    #[test]
+    fn backslash_backtick_passes_through() {
+        assert_eq!(for_sql_backslash("a`b"), "a`b");
     }
 
     #[test]
