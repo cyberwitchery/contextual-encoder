@@ -120,6 +120,10 @@
 //! - **tag and attribute names cannot be encoded.** never pass untrusted data
 //!   as a tag name, attribute name, or event handler name. validate these
 //!   against a whitelist.
+//! - **SQL identifiers cannot be encoded.** [`for_sql`] and
+//!   [`for_sql_backslash`] encode string literals (`'...'`). an identifier is
+//!   delimited by `"..."` or `` `...` ``, and neither delimiter is escaped.
+//!   validate an untrusted table or column name against a whitelist.
 //! - **full URLs must be validated separately.** `for_uri_component` encodes
 //!   a component, not a full URL. to embed an untrusted URL, validate its
 //!   scheme and structure first, then encode for the final sink.
