@@ -35,8 +35,8 @@
 use std::fmt;
 
 use crate::engine::{
-    encode_loop, is_unicode_noncharacter, needs_byte_string_encoding, write_byte_string_encoded,
-    write_rust_named_escape,
+    encode_loop, is_text_direction_control, is_unicode_noncharacter, needs_byte_string_encoding,
+    write_byte_string_encoded, write_rust_named_escape,
 };
 
 /// encodes `input` for safe embedding in a rust string literal (`"..."`).
@@ -143,12 +143,6 @@ fn needs_rust_char_encoding(c: char) -> bool {
     matches!(c, '\x00'..='\x1F' | '\x7F' | '\'' | '\\')
         || is_unicode_noncharacter(c as u32)
         || is_text_direction_control(c)
-}
-
-/// returns true for the bidi formatting characters `rustc` rejects raw inside a
-/// literal (the deny-by-default `text_direction_codepoint_in_literal` lint).
-fn is_text_direction_control(c: char) -> bool {
-    matches!(c, '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}')
 }
 
 /// writes the encoded form of a character for rust string or char context.

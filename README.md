@@ -94,6 +94,11 @@ resolves them before JavaScript sees the text, so untrusted input containing
 the literal `&#96;` would arrive as a backtick that closes a template literal,
 and `&#36;&#123;` as a `${` that opens an interpolation.
 
+all five escape the bidi formatting controls (U+202A-U+202E, U+2066-U+2069)
+as `\uHHHH`. a direction override left raw in the generated JavaScript reorders
+how the surrounding source reads, hiding code from review while the engine runs
+it unchanged — the same Trojan Source hazard the Rust literal encoders close.
+
 ### CSS
 
 | function | safe for | notes |

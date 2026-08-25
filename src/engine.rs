@@ -223,6 +223,13 @@ where
     }
 }
 
+/// returns true for the bidi formatting characters that can reorder how the
+/// surrounding source text renders (LRE, RLE, PDF, LRO, RLO, LRI, RLI, FSI,
+/// PDI).
+pub(crate) fn is_text_direction_control(c: char) -> bool {
+    matches!(c, '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}')
+}
+
 /// returns true if the code point is a unicode non-character.
 ///
 /// non-characters are: U+FDD0-U+FDEF and every code point ending in
