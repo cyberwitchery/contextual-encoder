@@ -1,6 +1,6 @@
 # changelog
 
-## Unreleased
+## [0.10.0] - 2026-09-06
 
 - the SQL security notes no longer name dynamic identifiers as a use case for the string literal encoders. `for_sql` and `for_sql_backslash` escape `'`, not the `"` or `` ` `` that delimits a table or column name, so an untrusted identifier must be validated against a whitelist; the README's list of dangerous contexts now says so too
 - **breaking:** `for_rust_string` and `for_rust_char` now escape the bidirectional formatting characters (U+202A-U+202E, U+2066-U+2069) as `\u{HHHH}`. emitted raw they made the literal a hard `rustc` error, and hid a Trojan Source direction override in the generated code
