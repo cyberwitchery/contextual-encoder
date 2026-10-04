@@ -1,0 +1,63 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.3",
+  "version": 1,
+  "serialNumber": "urn:uuid:1cc34d3e-1045-4576-af3c-b65c54d76a6d",
+  "metadata": {
+    "timestamp": "2026-10-04T15:02:28.353662000Z",
+    "tools": [
+      {
+        "vendor": "CycloneDX",
+        "name": "cargo-cyclonedx",
+        "version": "0.5.9"
+      }
+    ],
+    "authors": [
+      {
+        "name": "cyber witchery labs"
+      }
+    ],
+    "component": {
+      "type": "library",
+      "bom-ref": "path+file:///Users/veitheller/Documents/Code/Github/cwl/sec/contextual-encoder#0.10.0",
+      "author": "cyber witchery labs",
+      "name": "contextual-encoder",
+      "version": "0.10.0",
+      "description": "contextual output encoding for xss defense and safe literal embedding, inspired by the owasp java encoder",
+      "scope": "required",
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "purl": "pkg:cargo/contextual-encoder@0.10.0?download_url=file://.",
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/cyberwitchery/contextual-encoder"
+        }
+      ],
+      "components": [
+        {
+          "type": "library",
+          "bom-ref": "path+file:///Users/veitheller/Documents/Code/Github/cwl/sec/contextual-encoder#0.10.0 bin-target-0",
+          "name": "contextual_encoder",
+          "version": "0.10.0",
+          "purl": "pkg:cargo/contextual-encoder@0.10.0?download_url=file://.#src/lib.rs"
+        }
+      ]
+    },
+    "properties": [
+      {
+        "name": "cdx:rustc:sbom:target:all_targets",
+        "value": "true"
+      }
+    ]
+  },
+  "components": [],
+  "dependencies": [
+    {
+      "ref": "path+file:///Users/veitheller/Documents/Code/Github/cwl/sec/contextual-encoder#0.10.0"
+    }
+  ]
+}

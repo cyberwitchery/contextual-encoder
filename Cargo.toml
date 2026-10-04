@@ -10,7 +10,7 @@ repository = "https://github.com/cyberwitchery/contextual-encoder"
 readme = "README.md"
 keywords = ["security", "xss", "encoding", "html", "owasp"]
 categories = ["web-programming", "encoding"]
-exclude = [".github/", "AGENTS.md", "deny.toml", "unsafe-budget.lock", "differential/"]
+exclude = [".github/", "AGENTS.md", "deny.toml", "unsafe-budget.lock", "differential/", "sbom/"]
 
 [lints.rust]
 unsafe_code = "forbid"
