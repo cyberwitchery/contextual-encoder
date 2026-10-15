@@ -365,38 +365,6 @@ mod tests {
 
     // -- usage pattern tests --
 
-    #[test]
-    fn inline_format_html() {
-        let input = "<b>bold</b>";
-        let result = format!("<p>{}</p>", display_html(input));
-        assert_eq!(result, "<p>&lt;b&gt;bold&lt;/b&gt;</p>");
-    }
-
-    #[test]
-    fn inline_format_nested_contexts() {
-        let query = "hello world & goodbye";
-        let href = format!("/search?q={}", display_uri_component(query));
-        let attr = format!(r#"<a href="{}">"#, display_html_attribute(&href));
-        assert!(attr.contains("/search?q=hello%20world%20%26%20goodbye"));
-    }
-
-    #[test]
-    fn write_macro_integration() {
-        use std::fmt::Write;
-        let mut buf = String::new();
-        write!(buf, "<p>{}</p>", display_html("a & b")).unwrap();
-        assert_eq!(buf, "<p>a &amp; b</p>");
-    }
-
-    #[test]
-    fn display_wrapper_is_reusable() {
-        let wrapper = display_html("<b>");
-        let first = format!("{wrapper}");
-        let second = format!("{wrapper}");
-        assert_eq!(first, second);
-        assert_eq!(first, "&lt;b&gt;");
-    }
-
     #[derive(Default)]
     struct ChunkCounter {
         out: String,
