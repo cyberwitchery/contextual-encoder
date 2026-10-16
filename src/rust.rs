@@ -198,55 +198,6 @@ pub fn write_rust_byte_string<W: fmt::Write>(out: &mut W, input: &str) -> fmt::R
 mod tests {
     use super::*;
 
-    // -- for_rust_string --
-
-    #[test]
-    fn string_passthrough() {
-        assert_eq!(for_rust_string("hello world"), "hello world");
-        assert_eq!(for_rust_string(""), "");
-        assert_eq!(for_rust_string("café 日本語"), "café 日本語");
-        assert_eq!(for_rust_string("😀"), "😀");
-    }
-
-    #[test]
-    fn string_escapes_double_quote() {
-        assert_eq!(for_rust_string(r#"a"b"#), r#"a\"b"#);
-    }
-
-    #[test]
-    fn string_passes_single_quote() {
-        assert_eq!(for_rust_string("a'b"), "a'b");
-    }
-
-    #[test]
-    fn string_escapes_backslash() {
-        assert_eq!(for_rust_string(r"a\b"), r"a\\b");
-    }
-
-    #[test]
-    fn string_named_escapes() {
-        assert_eq!(for_rust_string("\0"), "\\0");
-        assert_eq!(for_rust_string("\t"), "\\t");
-        assert_eq!(for_rust_string("\n"), "\\n");
-        assert_eq!(for_rust_string("\r"), "\\r");
-    }
-
-    #[test]
-    fn string_hex_escapes_for_controls() {
-        assert_eq!(for_rust_string("\x01"), "\\x01");
-        assert_eq!(for_rust_string("\x08"), "\\x08");
-        assert_eq!(for_rust_string("\x0B"), "\\x0b");
-        assert_eq!(for_rust_string("\x0C"), "\\x0c");
-        assert_eq!(for_rust_string("\x1F"), "\\x1f");
-        assert_eq!(for_rust_string("\x7F"), "\\x7f");
-    }
-
-    #[test]
-    fn string_nonchars_replaced() {
-        assert_eq!(for_rust_string("\u{FDD0}"), " ");
-        assert_eq!(for_rust_string("\u{FFFE}"), " ");
-    }
-
     /// the codepoints `rustc` denies raw in a literal, with their escaped forms.
     const TEXT_DIRECTION: [(&str, &str); 9] = [
         ("\u{202A}", r"\u{202a}"),
@@ -268,120 +219,7 @@ mod tests {
         }
     }
 
-    #[test]
-    fn string_writer_matches() {
-        let input = "test\0\"\\\n café";
-        let mut w = String::new();
-        write_rust_string(&mut w, input).unwrap();
-        assert_eq!(for_rust_string(input), w);
-    }
-
-    // -- for_rust_char --
-
-    #[test]
-    fn char_passthrough() {
-        assert_eq!(for_rust_char("hello world"), "hello world");
-        assert_eq!(for_rust_char(""), "");
-        assert_eq!(for_rust_char("café"), "café");
-    }
-
-    #[test]
-    fn char_escapes_single_quote() {
-        assert_eq!(for_rust_char("a'b"), r"a\'b");
-    }
-
-    #[test]
-    fn char_passes_double_quote() {
-        assert_eq!(for_rust_char(r#"a"b"#), r#"a"b"#);
-    }
-
-    #[test]
-    fn char_escapes_backslash() {
-        assert_eq!(for_rust_char(r"a\b"), r"a\\b");
-    }
-
-    #[test]
-    fn char_named_escapes() {
-        assert_eq!(for_rust_char("\0"), "\\0");
-        assert_eq!(for_rust_char("\t"), "\\t");
-        assert_eq!(for_rust_char("\n"), "\\n");
-        assert_eq!(for_rust_char("\r"), "\\r");
-    }
-
-    #[test]
-    fn char_hex_escapes_for_controls() {
-        assert_eq!(for_rust_char("\x01"), "\\x01");
-        assert_eq!(for_rust_char("\x7F"), "\\x7f");
-    }
-
-    #[test]
-    fn char_nonchars_replaced() {
-        assert_eq!(for_rust_char("\u{FDD0}"), " ");
-    }
-
-    #[test]
-    fn char_escapes_text_direction_controls() {
-        for (raw, escaped) in TEXT_DIRECTION {
-            assert_eq!(for_rust_char(raw), escaped);
-        }
-    }
-
-    #[test]
-    fn char_writer_matches() {
-        let input = "test\0'\\\n café";
-        let mut w = String::new();
-        write_rust_char(&mut w, input).unwrap();
-        assert_eq!(for_rust_char(input), w);
-    }
-
     // -- for_rust_char_checked --
-
-    #[test]
-    fn char_checked_rejects_empty() {
-        assert_eq!(for_rust_char_checked(""), None);
-    }
-
-    #[test]
-    fn char_checked_accepts_single() {
-        assert_eq!(for_rust_char_checked("a"), Some("a".to_string()));
-        assert_eq!(for_rust_char_checked(" "), Some(" ".to_string()));
-    }
-
-    #[test]
-    fn char_checked_rejects_multi() {
-        assert_eq!(for_rust_char_checked("ab"), None);
-        assert_eq!(for_rust_char_checked("it's"), None);
-        assert_eq!(for_rust_char_checked("hello world"), None);
-    }
-
-    #[test]
-    fn char_checked_rejects_multi_scalar_grapheme() {
-        assert_eq!(for_rust_char_checked("e\u{301}"), None);
-    }
-
-    #[test]
-    fn char_checked_escapes_single() {
-        assert_eq!(for_rust_char_checked("'"), Some(r"\'".to_string()));
-        assert_eq!(for_rust_char_checked("\\"), Some(r"\\".to_string()));
-        assert_eq!(for_rust_char_checked("\0"), Some(r"\0".to_string()));
-        assert_eq!(for_rust_char_checked("\n"), Some(r"\n".to_string()));
-        assert_eq!(for_rust_char_checked("\x01"), Some(r"\x01".to_string()));
-        assert_eq!(for_rust_char_checked("\u{FDD0}"), Some(" ".to_string()));
-    }
-
-    #[test]
-    fn char_checked_accepts_non_ascii() {
-        assert_eq!(for_rust_char_checked("é"), Some("é".to_string()));
-        assert_eq!(for_rust_char_checked("日"), Some("日".to_string()));
-        assert_eq!(for_rust_char_checked("😀"), Some("😀".to_string()));
-    }
-
-    #[test]
-    fn char_checked_escapes_text_direction_controls() {
-        for (raw, escaped) in TEXT_DIRECTION {
-            assert_eq!(for_rust_char_checked(raw), Some(escaped.to_string()));
-        }
-    }
 
     #[test]
     fn char_checked_matches_unchecked_when_accepted() {
@@ -396,69 +234,13 @@ mod tests {
     // -- for_rust_byte_string --
 
     #[test]
-    fn byte_string_passthrough() {
-        assert_eq!(for_rust_byte_string("hello world"), "hello world");
-        assert_eq!(for_rust_byte_string(""), "");
-    }
-
-    #[test]
-    fn byte_string_escapes_double_quote() {
-        assert_eq!(for_rust_byte_string(r#"a"b"#), r#"a\"b"#);
-    }
-
-    #[test]
     fn byte_string_escapes_backslash() {
         assert_eq!(for_rust_byte_string(r"a\b"), r"a\\b");
-    }
-
-    #[test]
-    fn byte_string_named_escapes() {
-        assert_eq!(for_rust_byte_string("\0"), "\\0");
-        assert_eq!(for_rust_byte_string("\t"), "\\t");
-        assert_eq!(for_rust_byte_string("\n"), "\\n");
-        assert_eq!(for_rust_byte_string("\r"), "\\r");
-    }
-
-    #[test]
-    fn byte_string_hex_for_controls() {
-        assert_eq!(for_rust_byte_string("\x01"), "\\x01");
-        assert_eq!(for_rust_byte_string("\x7F"), "\\x7f");
-    }
-
-    #[test]
-    fn byte_string_non_ascii_as_utf8_bytes() {
-        // é = U+00E9 → UTF-8: C3 A9
-        assert_eq!(for_rust_byte_string("é"), r"\xc3\xa9");
-        // café → only the é is encoded
-        assert_eq!(for_rust_byte_string("café"), r"caf\xc3\xa9");
-        // 日 = U+65E5 → UTF-8: E6 97 A5
-        assert_eq!(for_rust_byte_string("日"), r"\xe6\x97\xa5");
-        // 😀 = U+1F600 → UTF-8: F0 9F 98 80
-        assert_eq!(for_rust_byte_string("😀"), r"\xf0\x9f\x98\x80");
-    }
-
-    #[test]
-    fn byte_string_nonchars_as_bytes() {
-        // U+FDD0 → UTF-8: EF B7 90
-        assert_eq!(for_rust_byte_string("\u{FDD0}"), r"\xef\xb7\x90");
     }
 
     #[test]
     fn byte_string_text_direction_controls_as_bytes() {
         assert_eq!(for_rust_byte_string("\u{202E}"), r"\xe2\x80\xae");
         assert_eq!(for_rust_byte_string("\u{2069}"), r"\xe2\x81\xa9");
-    }
-
-    #[test]
-    fn byte_string_single_quote_passes() {
-        assert_eq!(for_rust_byte_string("a'b"), "a'b");
-    }
-
-    #[test]
-    fn byte_string_writer_matches() {
-        let input = "test\0\"\\café";
-        let mut w = String::new();
-        write_rust_byte_string(&mut w, input).unwrap();
-        assert_eq!(for_rust_byte_string(input), w);
     }
 }

@@ -307,66 +307,7 @@ fn write_html_unquoted_attribute_encoded<W: fmt::Write>(
 mod tests {
     use super::*;
 
-    // -- for_html --
-
-    #[test]
-    fn html_no_encoding_needed() {
-        assert_eq!(for_html("hello world"), "hello world");
-        assert_eq!(for_html(""), "");
-        assert_eq!(for_html("abc123"), "abc123");
-    }
-
-    #[test]
-    fn html_encodes_ampersand() {
-        assert_eq!(for_html("a&b"), "a&amp;b");
-    }
-
-    #[test]
-    fn html_encodes_angle_brackets() {
-        assert_eq!(for_html("<div>"), "&lt;div&gt;");
-    }
-
-    #[test]
-    fn html_encodes_quotes() {
-        assert_eq!(for_html(r#"a"b'c"#), "a&#34;b&#39;c");
-    }
-
-    #[test]
-    fn html_replaces_controls_with_space() {
-        assert_eq!(for_html("a\x01b"), "a b");
-        assert_eq!(for_html("a\x7Fb"), "a b");
-    }
-
-    #[test]
-    fn html_preserves_tab_lf_cr() {
-        assert_eq!(for_html("a\tb\nc\rd"), "a\tb\nc\rd");
-    }
-
-    #[test]
-    fn html_writer_variant() {
-        let mut out = String::new();
-        write_html(&mut out, "<b>").unwrap();
-        assert_eq!(out, "&lt;b&gt;");
-    }
-
-    // -- for_html_content --
-
-    #[test]
-    fn html_content_does_not_encode_quotes() {
-        assert_eq!(for_html_content(r#"a"b'c"#), r#"a"b'c"#);
-    }
-
-    #[test]
-    fn html_content_encodes_angle_brackets_and_amp() {
-        assert_eq!(for_html_content("a<b&c>d"), "a&lt;b&amp;c&gt;d");
-    }
-
     // -- for_html_attribute --
-
-    #[test]
-    fn html_attribute_does_not_encode_gt() {
-        assert_eq!(for_html_attribute("a>b"), "a>b");
-    }
 
     #[test]
     fn html_attribute_encodes_quotes_and_amp_and_lt() {
@@ -377,24 +318,6 @@ mod tests {
     }
 
     // -- for_html_unquoted_attribute --
-
-    #[test]
-    fn unquoted_attr_encodes_whitespace() {
-        assert_eq!(
-            for_html_unquoted_attribute("a b\tc\nd"),
-            "a&#32;b&#9;c&#10;d"
-        );
-    }
-
-    #[test]
-    fn unquoted_attr_encodes_grave_accent() {
-        assert_eq!(for_html_unquoted_attribute("a`b"), "a&#96;b");
-    }
-
-    #[test]
-    fn unquoted_attr_encodes_equals_and_slash() {
-        assert_eq!(for_html_unquoted_attribute("a=b/c"), "a&#61;b&#47;c");
-    }
 
     #[test]
     fn unquoted_attr_replaces_controls_with_dash() {

@@ -332,41 +332,7 @@ pub fn write_xml11_attribute<W: fmt::Write>(out: &mut W, input: &str) -> fmt::Re
 mod tests {
     use super::*;
 
-    // -- XML 1.0 aliases --
-
-    #[test]
-    fn xml_aliases_match_html() {
-        let input = r#"<b attr="val">&amp;</b>"#;
-        assert_eq!(for_xml(input), crate::html::for_html(input));
-        assert_eq!(for_xml_content(input), crate::html::for_html_content(input));
-        assert_eq!(
-            for_xml_attribute(input),
-            crate::html::for_html_attribute(input)
-        );
-    }
-
     // -- XML comment --
-
-    #[test]
-    fn comment_passthrough() {
-        assert_eq!(for_xml_comment("safe text"), "safe text");
-        assert_eq!(for_xml_comment(""), "");
-    }
-
-    #[test]
-    fn comment_double_hyphen() {
-        assert_eq!(for_xml_comment("a--b"), "a-~b");
-        assert_eq!(for_xml_comment("--"), "-~");
-        assert_eq!(for_xml_comment("---"), "-~~");
-        assert_eq!(for_xml_comment("----"), "-~-~");
-        assert_eq!(for_xml_comment("a--b--c"), "a-~b-~c");
-    }
-
-    #[test]
-    fn comment_trailing_hyphen() {
-        assert_eq!(for_xml_comment("trailing-"), "trailing~");
-        assert_eq!(for_xml_comment("-"), "~");
-    }
 
     #[test]
     fn comment_hyphen_not_paired_across_run() {
@@ -374,55 +340,7 @@ mod tests {
         assert_eq!(for_xml_comment("a-b-c"), "a-b-c");
     }
 
-    #[test]
-    fn comment_replaces_invalid_xml() {
-        assert_eq!(for_xml_comment("a\x01b"), "a b");
-        assert_eq!(for_xml_comment("a\x7Fb"), "a b");
-    }
-
-    #[test]
-    fn comment_preserves_non_ascii() {
-        assert_eq!(for_xml_comment("café"), "café");
-    }
-
-    #[test]
-    fn comment_writer_variant() {
-        let mut out = String::new();
-        write_xml_comment(&mut out, "a--b").unwrap();
-        assert_eq!(out, "a-~b");
-    }
-
     // -- CDATA --
-
-    #[test]
-    fn cdata_passthrough() {
-        assert_eq!(for_cdata("safe text"), "safe text");
-        assert_eq!(for_cdata(""), "");
-    }
-
-    #[test]
-    fn cdata_splits_closing_delimiter() {
-        assert_eq!(for_cdata("a]]>b"), "a]]]]><![CDATA[>b");
-    }
-
-    #[test]
-    fn cdata_double_split() {
-        assert_eq!(for_cdata("a]]>b]]>c"), "a]]]]><![CDATA[>b]]]]><![CDATA[>c");
-    }
-
-    #[test]
-    fn cdata_brackets_without_gt() {
-        assert_eq!(for_cdata("]]a"), "]]a");
-        assert_eq!(for_cdata("a]b"), "a]b");
-    }
-
-    #[test]
-    fn cdata_splits_trailing_bracket() {
-        assert_eq!(for_cdata("]"), "]]]><![CDATA[");
-        assert_eq!(for_cdata("]]"), "]]]]><![CDATA[");
-        assert_eq!(for_cdata("]]]"), "]]]]]><![CDATA[");
-        assert_eq!(for_cdata("a]"), "a]]]><![CDATA[");
-    }
 
     #[test]
     fn cdata_writes_cannot_form_a_delimiter_across_the_boundary() {
@@ -441,85 +359,5 @@ mod tests {
     fn cdata_bracket_run_reset_before_gt() {
         assert_eq!(for_cdata("]]a>"), "]]a>");
         assert_eq!(for_cdata("]] >"), "]] >");
-    }
-
-    #[test]
-    fn cdata_extra_brackets() {
-        // ]]]> → ] + ]]> split
-        assert_eq!(for_cdata("]]]>"), "]]]]]><![CDATA[>");
-    }
-
-    #[test]
-    fn cdata_replaces_invalid_xml() {
-        assert_eq!(for_cdata("a\x01b"), "a b");
-    }
-
-    #[test]
-    fn cdata_single_bracket_gt() {
-        // ]> is not ]]>, should pass through
-        assert_eq!(for_cdata("]>"), "]>");
-    }
-
-    #[test]
-    fn cdata_writer_variant() {
-        let mut out = String::new();
-        write_cdata(&mut out, "a]]>b").unwrap();
-        assert_eq!(out, "a]]]]><![CDATA[>b");
-    }
-
-    // -- XML 1.1 --
-
-    #[test]
-    fn xml11_encodes_entities() {
-        assert_eq!(for_xml11("<&>\"'"), "&lt;&amp;&gt;&#34;&#39;");
-    }
-
-    #[test]
-    fn xml11_controls_as_references() {
-        // C0 controls get &#xHH; instead of space
-        assert_eq!(for_xml11("a\x01b"), "a&#x1;b");
-        assert_eq!(for_xml11("a\x08b"), "a&#x8;b");
-        assert_eq!(for_xml11("a\x0Bb"), "a&#xb;b");
-        assert_eq!(for_xml11("a\x1Fb"), "a&#x1f;b");
-    }
-
-    #[test]
-    fn xml11_nel_passes_through() {
-        // NEL (U+0085) is NOT restricted in XML 1.1
-        assert_eq!(for_xml11("a\u{0085}b"), "a\u{0085}b");
-    }
-
-    #[test]
-    fn xml11_del_and_c1_as_references() {
-        assert_eq!(for_xml11("a\x7Fb"), "a&#x7f;b");
-        assert_eq!(for_xml11("a\u{0080}b"), "a&#x80;b");
-        assert_eq!(for_xml11("a\u{009F}b"), "a&#x9f;b");
-    }
-
-    #[test]
-    fn xml11_nul_replaced_with_space() {
-        assert_eq!(for_xml11("a\x00b"), "a b");
-    }
-
-    #[test]
-    fn xml11_nonchars_replaced_with_space() {
-        assert_eq!(for_xml11("a\u{FDD0}b"), "a b");
-    }
-
-    #[test]
-    fn xml11_preserves_tab_lf_cr() {
-        assert_eq!(for_xml11("a\tb\nc\rd"), "a\tb\nc\rd");
-    }
-
-    #[test]
-    fn xml11_content_no_quotes() {
-        assert_eq!(for_xml11_content(r#"a"b'c"#), r#"a"b'c"#);
-        assert_eq!(for_xml11_content("a\x01b"), "a&#x1;b");
-    }
-
-    #[test]
-    fn xml11_attribute_no_gt() {
-        assert_eq!(for_xml11_attribute("a>b"), "a>b");
-        assert_eq!(for_xml11_attribute("a\x01b"), "a&#x1;b");
     }
 }

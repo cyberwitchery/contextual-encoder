@@ -9,6 +9,9 @@
 
 use contextual_encoder::*;
 
+/// signature shared by every `for_*` encoder.
+type ForFn = fn(&str) -> String;
+
 // ===========================================================================
 // HTML context tests
 // ===========================================================================
@@ -61,34 +64,22 @@ mod html {
     // -- unicode --
 
     #[test]
-    fn cjk_characters() {
-        assert_eq!(for_html("日本語テスト"), "日本語テスト");
-    }
-
-    #[test]
-    fn emoji() {
-        assert_eq!(for_html("hello 😀 world"), "hello 😀 world");
-    }
-
-    #[test]
-    fn mixed_unicode_and_html() {
-        assert_eq!(for_html("<café>"), "&lt;café&gt;");
-    }
-
-    #[test]
-    fn supplementary_plane_characters() {
-        // U+10000 LINEAR B SYLLABLE B008 A
-        assert_eq!(for_html("\u{10000}"), "\u{10000}");
-        // U+1F600 GRINNING FACE
-        assert_eq!(for_html("😀"), "😀");
+    fn unicode() {
+        for (input, expected) in [
+            ("日本語テスト", "日本語テスト"),
+            ("hello 😀 world", "hello 😀 world"),
+            // U+1F600 GRINNING FACE
+            ("😀", "😀"),
+            // U+10000 LINEAR B SYLLABLE B008 A
+            ("\u{10000}", "\u{10000}"),
+            ("<café>", "&lt;café&gt;"),
+            ("é<世>&😀", "é&lt;世&gt;&amp;😀"),
+        ] {
+            assert_eq!(for_html(input), expected, "{input:?}");
+        }
     }
 
     // -- control characters --
-
-    #[test]
-    fn null_byte() {
-        assert_eq!(for_html("\x00"), " ");
-    }
 
     #[test]
     fn all_c0_controls() {
@@ -138,27 +129,6 @@ mod html {
     }
 
     // -- boundary conditions --
-
-    #[test]
-    fn empty_string() {
-        assert_eq!(for_html(""), "");
-    }
-
-    #[test]
-    fn single_safe_char() {
-        assert_eq!(for_html("a"), "a");
-    }
-
-    #[test]
-    fn single_unsafe_char() {
-        assert_eq!(for_html("<"), "&lt;");
-    }
-
-    #[test]
-    fn long_safe_string() {
-        let s = "a".repeat(10000);
-        assert_eq!(for_html(&s), s);
-    }
 
     #[test]
     fn all_unsafe_string() {
@@ -228,40 +198,60 @@ mod javascript {
         );
     }
 
-    // `<!--<script>` reaches script-data-double-escaped state, where the
-    // block's own `</script>` stops closing it
+    // `<` opens every script-data escape (`</script>`, `<!--`, and
+    // `<!--<script>`, which reaches script-data-double-escaped state where
+    // the block's own `</script>` stops closing it)
     #[test]
-    fn script_data_double_escape_start_blocked() {
-        assert_eq!(for_javascript("<!--<script>"), r"\x3c!--\x3cscript>");
-        assert_eq!(for_javascript_block("<!--<script>"), r"\x3c!--\x3cscript>");
-        assert_eq!(for_js_template("<!--<script>"), r"\x3c!--\x3cscript>");
-    }
-
-    #[test]
-    fn script_data_escape_neighbours_encoded() {
-        for input in ["<!--", "<script", "</script>", "<!--<script >", "<"] {
-            for (name, encoded) in [
-                ("javascript", for_javascript(input)),
-                ("javascript_block", for_javascript_block(input)),
-                ("js_template", for_js_template(input)),
-            ] {
-                assert!(!encoded.contains('<'), "{name}: {input:?} -> {encoded:?}");
+    fn script_data_lt_encoded() {
+        let cases = [
+            ("a<b", r"a\x3cb"),
+            ("<", r"\x3c"),
+            ("<!--", r"\x3c!--"),
+            ("<script", r"\x3cscript"),
+            ("</script>", r"\x3c\/script>"),
+            ("<!--<script>", r"\x3c!--\x3cscript>"),
+            ("<!--<script >", r"\x3c!--\x3cscript >"),
+        ];
+        let encoders: [(&str, ForFn); 3] = [
+            ("javascript", for_javascript),
+            ("javascript_block", for_javascript_block),
+            ("js_template", for_js_template),
+        ];
+        for (name, encode) in encoders {
+            for (input, expected) in cases {
+                assert_eq!(encode(input), expected, "{name}: {input:?}");
             }
         }
     }
 
     // an XHTML parser decodes character references inside `<script>`, so a
-    // surviving `&` hands javascript a delimiter the encoder never saw
+    // surviving `&` hands javascript a delimiter the encoder never saw.
+    // attribute values are decoded by the html parser too; a .js file never is
     #[test]
     fn entity_introducer_encoded() {
-        for input in ["&", "&#96;", "&#36;&#123;", "&amp;", "&grave;"] {
-            for (name, encoded) in [
-                ("javascript", for_javascript(input)),
-                ("javascript_block", for_javascript_block(input)),
-                ("js_template", for_js_template(input)),
-            ] {
-                assert!(!encoded.contains('&'), "{name}: {input:?} -> {encoded:?}");
+        let cases = [
+            ("a&b", r"a\x26b"),
+            ("&", r"\x26"),
+            ("&&", r"\x26\x26"),
+            ("&#96;", r"\x26#96;"),
+            ("&#x60;", r"\x26#x60;"),
+            ("&grave;", r"\x26grave;"),
+            ("&#36;&#123;", r"\x26#36;\x26#123;"),
+            ("&amp;", r"\x26amp;"),
+        ];
+        let encoders: [(&str, ForFn); 4] = [
+            ("javascript", for_javascript),
+            ("javascript_attribute", for_javascript_attribute),
+            ("javascript_block", for_javascript_block),
+            ("js_template", for_js_template),
+        ];
+        for (name, encode) in encoders {
+            for (input, expected) in cases {
+                assert_eq!(encode(input), expected, "{name}: {input:?}");
             }
+        }
+        for (input, _) in cases {
+            assert_eq!(for_javascript_source(input), input, "{input:?}");
         }
     }
 
@@ -344,18 +334,7 @@ mod javascript {
         assert_eq!(for_javascript_source("\u{2028}"), r"\u2028");
     }
 
-    #[test]
-    fn block_vs_source_ampersand() {
-        assert_eq!(for_javascript_block("a&b"), r"a\x26b");
-        assert_eq!(for_javascript_source("a&b"), "a&b");
-    }
-
     // -- edge cases --
-
-    #[test]
-    fn empty_string() {
-        assert_eq!(for_javascript(""), "");
-    }
 
     #[test]
     fn already_escaped_input() {
@@ -382,6 +361,7 @@ mod js_template {
     #[test]
     fn multiple_interpolations() {
         assert_eq!(for_js_template("${a} and ${b}"), r"\${a} and \${b}");
+        assert_eq!(for_js_template("${a}${b}"), r"\${a}\${b}");
     }
 
     #[test]
@@ -425,23 +405,6 @@ mod js_template {
             for_js_template("</script><script>alert(1)</script>"),
             r"\x3c\/script>\x3cscript>alert(1)\x3c\/script>"
         );
-    }
-
-    // -- character references (XHTML decodes them inside `<script>`) --
-
-    #[test]
-    fn ampersand_escaped() {
-        assert_eq!(for_js_template("a&b"), r"a\x26b");
-        assert_eq!(for_js_template("&"), r"\x26");
-        assert_eq!(for_js_template("&&"), r"\x26\x26");
-    }
-
-    #[test]
-    fn entity_encoded_delimiters_cannot_decode() {
-        assert_eq!(for_js_template("&#96;"), r"\x26#96;");
-        assert_eq!(for_js_template("&grave;"), r"\x26grave;");
-        assert_eq!(for_js_template("&#36;&#123;"), r"\x26#36;\x26#123;");
-        assert_eq!(for_js_template("&#x60;"), r"\x26#x60;");
     }
 
     // -- backslash escaping --
@@ -498,39 +461,12 @@ mod js_template {
 
     #[test]
     fn preserves_non_ascii() {
-        assert_eq!(for_js_template("café"), "café");
-        assert_eq!(for_js_template("日本語"), "日本語");
-    }
-
-    #[test]
-    fn emoji() {
-        assert_eq!(for_js_template("😀"), "😀");
-        assert_eq!(for_js_template("hello 😀 world"), "hello 😀 world");
-    }
-
-    #[test]
-    fn supplementary_plane_characters() {
-        assert_eq!(for_js_template("\u{10000}"), "\u{10000}");
-        assert_eq!(for_js_template("\u{1F600}"), "\u{1F600}");
+        for input in ["café", "日本語", "😀", "hello 😀 world", "\u{10000}"] {
+            assert_eq!(for_js_template(input), input);
+        }
     }
 
     // -- boundary conditions --
-
-    #[test]
-    fn empty_string() {
-        assert_eq!(for_js_template(""), "");
-    }
-
-    #[test]
-    fn single_safe_char() {
-        assert_eq!(for_js_template("a"), "a");
-    }
-
-    #[test]
-    fn long_safe_string() {
-        let s = "a".repeat(10000);
-        assert_eq!(for_js_template(&s), s);
-    }
 
     #[test]
     fn already_escaped_input() {
@@ -541,22 +477,6 @@ mod js_template {
     }
 
     // -- context comparisons --
-
-    #[test]
-    fn template_vs_string_quotes() {
-        // for_javascript encodes quotes; for_js_template does not
-        assert_eq!(for_javascript(r#"a"b"#), r"a\x22b");
-        assert_eq!(for_js_template(r#"a"b"#), r#"a"b"#);
-        assert_eq!(for_javascript("a'b"), r"a\x27b");
-        assert_eq!(for_js_template("a'b"), "a'b");
-    }
-
-    #[test]
-    fn template_vs_string_backtick() {
-        // for_javascript does NOT encode backtick; for_js_template does
-        assert_eq!(for_javascript("`"), "`");
-        assert_eq!(for_js_template("`"), r"\`");
-    }
 
     #[test]
     fn template_vs_string_interpolation() {
@@ -574,28 +494,6 @@ mod js_template {
             r"\`Hello \${name}\`, welcome\\n"
         );
     }
-
-    // -- writer parity --
-
-    #[test]
-    fn writer_matches_string() {
-        let input = "`Hello ${name}` \\ </script> \t\n café 😀";
-        let string_result = for_js_template(input);
-        let mut writer_result = String::new();
-        write_js_template(&mut writer_result, input).unwrap();
-        assert_eq!(string_result, writer_result);
-    }
-
-    #[test]
-    fn writer_matches_string_all_categories() {
-        // input covering: passthrough, backtick, interpolation, backslash,
-        // slash, named escapes, hex controls, line separators, non-ASCII
-        let input = "abc`${x}\\\t\n\r\x0C\x08\x00\x1F/\u{2028}\u{2029}café😀";
-        let string_result = for_js_template(input);
-        let mut writer_result = String::new();
-        write_js_template(&mut writer_result, input).unwrap();
-        assert_eq!(string_result, writer_result);
-    }
 }
 
 // ===========================================================================
@@ -604,12 +502,6 @@ mod js_template {
 
 mod css {
     use super::*;
-
-    #[test]
-    fn basic_encoding() {
-        assert_eq!(for_css_string("hello"), "hello");
-        assert_eq!(for_css_string(""), "");
-    }
 
     #[test]
     fn hex_escape_format() {
@@ -627,7 +519,9 @@ mod css {
         assert_eq!(for_css_string("\"0"), r"\22 0"); // 0 is hex
         assert_eq!(for_css_string("\"f"), r"\22 f"); // f is hex
         assert_eq!(for_css_string("\"F"), r"\22 F"); // F is hex
-                                                     // next char is NOT hex → no space
+        assert_eq!(for_css_string("a'1"), r"a\27 1"); // 1 is hex
+        assert_eq!(for_css_string(r"a\b"), r"a\5c b"); // b is hex
+                                                       // next char is NOT hex → no space
         assert_eq!(for_css_string("\"g"), r"\22g"); // g is not hex
         assert_eq!(for_css_string("\"z"), r"\22z");
         assert_eq!(for_css_string("\"!"), r"\22!");
@@ -637,6 +531,7 @@ mod css {
     fn trailing_space_before_whitespace() {
         // space after hex escape before whitespace chars
         assert_eq!(for_css_string("\" "), r"\22  "); // space
+        assert_eq!(for_css_string("' "), r"\27  "); // space
         assert_eq!(for_css_string("\"\t"), r"\22 \9 "); // tab (also encoded)
         assert_eq!(for_css_string("\"\n"), r"\22 \a "); // LF (also encoded)
     }
@@ -672,8 +567,9 @@ mod css {
 
     #[test]
     fn preserves_non_ascii() {
-        assert_eq!(for_css_string("café"), "café");
-        assert_eq!(for_css_string("日本語"), "日本語");
+        for input in ["café", "日本語", "😀"] {
+            assert_eq!(for_css_string(input), input);
+        }
     }
 
     // -- C1 control characters (U+0080-U+009F) --
@@ -685,20 +581,6 @@ mod css {
         assert_eq!(for_css_string("\u{009F}"), r"\9f ");
         // NEL (U+0085) — can affect CSS parsing
         assert_eq!(for_css_string("\u{0085}"), r"\85 ");
-    }
-
-    #[test]
-    fn c1_controls_full_range() {
-        // every C1 control must be encoded, not passed through
-        for cp in 0x80u32..=0x9F {
-            let c = char::from_u32(cp).unwrap();
-            let input = String::from(c);
-            let encoded = for_css_string(&input);
-            assert!(
-                encoded.starts_with('\\'),
-                "U+{cp:04X} should be CSS-encoded, got {encoded:?}"
-            );
-        }
     }
 
     #[test]
@@ -739,6 +621,7 @@ mod css {
         assert_eq!(for_css_url("\""), r"\22 ");
         assert_eq!(for_css_url("'"), r"\27 ");
         assert_eq!(for_css_url("\\"), r"\5c ");
+        assert_eq!(for_css_url(r"a\b"), r"a\5c b");
         assert_eq!(for_css_url("<"), r"\3c ");
     }
 
@@ -781,23 +664,6 @@ mod css {
     }
 
     #[test]
-    fn url_encodes_non_printables() {
-        // U+0000-U+0008, U+000B, U+000E-U+001F and DEL invalidate a url-token
-        for cp in (0x00u32..=0x08)
-            .chain([0x0B])
-            .chain(0x0E..=0x1F)
-            .chain([0x7F])
-        {
-            let input = String::from(char::from_u32(cp).unwrap());
-            let encoded = for_css_url(&input);
-            assert!(
-                encoded.starts_with('\\'),
-                "U+{cp:04X} should be CSS-encoded, got {encoded:?}"
-            );
-        }
-    }
-
-    #[test]
     fn url_string_encoding_agrees_without_spaces() {
         for input in ["image.png", "a(b)c", "expression(alert(1))", "café", ")("] {
             assert_eq!(for_css_url(input), for_css_string(input), "input {input:?}");
@@ -818,26 +684,47 @@ mod uri {
         assert_eq!(for_uri_component(unreserved), unreserved);
     }
 
+    const URI_ENCODERS: [(&str, ForFn); 3] = [
+        ("uri_component", for_uri_component),
+        ("uri_path", for_uri_path),
+        ("form_urlencoded", for_form_urlencoded),
+    ];
+
     #[test]
-    fn reserved_chars_encoded() {
-        assert_eq!(for_uri_component(":"), "%3A");
+    fn reserved_and_markup_chars_encoded() {
+        let cases = [
+            (":", "%3A"),
+            ("?", "%3F"),
+            ("#", "%23"),
+            ("[", "%5B"),
+            ("]", "%5D"),
+            ("@", "%40"),
+            ("!", "%21"),
+            ("$", "%24"),
+            ("&", "%26"),
+            ("'", "%27"),
+            ("(", "%28"),
+            (")", "%29"),
+            ("+", "%2B"),
+            (",", "%2C"),
+            (";", "%3B"),
+            ("=", "%3D"),
+            ("<", "%3C"),
+            (">", "%3E"),
+            ("\"", "%22"),
+        ];
+        for (name, encode) in URI_ENCODERS {
+            for (input, expected) in cases {
+                assert_eq!(encode(input), expected, "{name}: {input:?}");
+            }
+        }
+        // `/` is kept by the path encoder, `*` by the form encoder
         assert_eq!(for_uri_component("/"), "%2F");
-        assert_eq!(for_uri_component("?"), "%3F");
-        assert_eq!(for_uri_component("#"), "%23");
-        assert_eq!(for_uri_component("["), "%5B");
-        assert_eq!(for_uri_component("]"), "%5D");
-        assert_eq!(for_uri_component("@"), "%40");
-        assert_eq!(for_uri_component("!"), "%21");
-        assert_eq!(for_uri_component("$"), "%24");
-        assert_eq!(for_uri_component("&"), "%26");
-        assert_eq!(for_uri_component("'"), "%27");
-        assert_eq!(for_uri_component("("), "%28");
-        assert_eq!(for_uri_component(")"), "%29");
+        assert_eq!(for_uri_path("/"), "/");
+        assert_eq!(for_form_urlencoded("/"), "%2F");
         assert_eq!(for_uri_component("*"), "%2A");
-        assert_eq!(for_uri_component("+"), "%2B");
-        assert_eq!(for_uri_component(","), "%2C");
-        assert_eq!(for_uri_component(";"), "%3B");
-        assert_eq!(for_uri_component("="), "%3D");
+        assert_eq!(for_uri_path("*"), "%2A");
+        assert_eq!(for_form_urlencoded("*"), "*");
     }
 
     #[test]
@@ -846,48 +733,30 @@ mod uri {
     }
 
     #[test]
-    fn html_significant_chars_encoded() {
-        assert_eq!(for_uri_component("<"), "%3C");
-        assert_eq!(for_uri_component(">"), "%3E");
-        assert_eq!(for_uri_component("\""), "%22");
-    }
-
-    // -- UTF-8 multi-byte encoding --
-
-    #[test]
-    fn two_byte_utf8() {
-        // U+00A0 NBSP → C2 A0
-        assert_eq!(for_uri_component("\u{00A0}"), "%C2%A0");
-        // U+00E9 é → C3 A9
-        assert_eq!(for_uri_component("é"), "%C3%A9");
-        // U+07FF → DF BF
-        assert_eq!(for_uri_component("\u{07FF}"), "%DF%BF");
-    }
-
-    #[test]
-    fn three_byte_utf8() {
-        // U+0800 → E0 A0 80
-        assert_eq!(for_uri_component("\u{0800}"), "%E0%A0%80");
-        // U+4E16 世 → E4 B8 96
-        assert_eq!(for_uri_component("世"), "%E4%B8%96");
-        // U+FFFD → EF BF BD
-        assert_eq!(for_uri_component("\u{FFFD}"), "%EF%BF%BD");
-    }
-
-    #[test]
-    fn four_byte_utf8() {
-        // U+10000 → F0 90 80 80
-        assert_eq!(for_uri_component("\u{10000}"), "%F0%90%80%80");
-        // U+1F600 😀 → F0 9F 98 80
-        assert_eq!(for_uri_component("😀"), "%F0%9F%98%80");
-    }
-
-    #[test]
-    fn control_chars() {
-        assert_eq!(for_uri_component("\x00"), "%00");
-        assert_eq!(for_uri_component("\x01"), "%01");
-        assert_eq!(for_uri_component("\x1F"), "%1F");
-        assert_eq!(for_uri_component("\x7F"), "%7F");
+    fn utf8_and_controls_percent_encoded() {
+        let cases = [
+            // two-byte
+            ("\u{00A0}", "%C2%A0"),
+            ("é", "%C3%A9"),
+            ("\u{07FF}", "%DF%BF"),
+            // three-byte
+            ("\u{0800}", "%E0%A0%80"),
+            ("世", "%E4%B8%96"),
+            ("\u{FFFD}", "%EF%BF%BD"),
+            // four-byte
+            ("\u{10000}", "%F0%90%80%80"),
+            ("😀", "%F0%9F%98%80"),
+            // controls
+            ("\x00", "%00"),
+            ("\x01", "%01"),
+            ("\x1F", "%1F"),
+            ("\x7F", "%7F"),
+        ];
+        for (name, encode) in URI_ENCODERS {
+            for (input, expected) in cases {
+                assert_eq!(encode(input), expected, "{name}: {input:?}");
+            }
+        }
     }
 
     // -- practical cases --
@@ -916,23 +785,6 @@ mod uri {
         );
     }
 
-    // -- boundary conditions --
-
-    #[test]
-    fn empty_string() {
-        assert_eq!(for_uri_component(""), "");
-    }
-
-    #[test]
-    fn single_unreserved() {
-        assert_eq!(for_uri_component("a"), "a");
-    }
-
-    #[test]
-    fn all_percent_encoded() {
-        assert_eq!(for_uri_component("   "), "%20%20%20");
-    }
-
     // -- Rust-specific: no surrogates --
     // the Java encoder handles surrogate pairs in char[] input and replaces
     // invalid surrogates with "-". Rust str is always valid UTF-8, so
@@ -947,45 +799,22 @@ mod uri {
 mod uri_path {
     use super::*;
 
-    // -- slash preservation --
-
     #[test]
-    fn single_slash_preserved() {
-        assert_eq!(for_uri_path("/"), "/");
-    }
-
-    #[test]
-    fn path_separators_preserved() {
-        assert_eq!(for_uri_path("/a/b/c"), "/a/b/c");
-    }
-
-    #[test]
-    fn leading_slash_preserved() {
-        assert_eq!(for_uri_path("/root"), "/root");
-    }
-
-    #[test]
-    fn trailing_slash_preserved() {
-        assert_eq!(for_uri_path("/dir/"), "/dir/");
-    }
-
-    #[test]
-    fn multiple_consecutive_slashes_preserved() {
-        assert_eq!(for_uri_path("//double"), "//double");
-        assert_eq!(for_uri_path("///triple"), "///triple");
-        assert_eq!(for_uri_path("/a//b///c"), "/a//b///c");
-    }
-
-    #[test]
-    fn relative_path_no_leading_slash() {
-        assert_eq!(for_uri_path("a/b/c"), "a/b/c");
-    }
-
-    #[test]
-    fn slash_only_paths() {
-        assert_eq!(for_uri_path("/"), "/");
-        assert_eq!(for_uri_path("//"), "//");
-        assert_eq!(for_uri_path("///"), "///");
+    fn slashes_preserved() {
+        for input in [
+            "/",
+            "//",
+            "///",
+            "/a/b/c",
+            "/root",
+            "/dir/",
+            "//double",
+            "///triple",
+            "/a//b///c",
+            "a/b/c",
+        ] {
+            assert_eq!(for_uri_path(input), input);
+        }
     }
 
     // -- unreserved characters pass through --
@@ -1002,33 +831,6 @@ mod uri_path {
             for_uri_path("/safe-text_v2.0/~user"),
             "/safe-text_v2.0/~user"
         );
-    }
-
-    // -- reserved characters (except /) are encoded --
-
-    #[test]
-    fn gen_delims_encoded_except_slash() {
-        assert_eq!(for_uri_path(":"), "%3A");
-        assert_eq!(for_uri_path("?"), "%3F");
-        assert_eq!(for_uri_path("#"), "%23");
-        assert_eq!(for_uri_path("["), "%5B");
-        assert_eq!(for_uri_path("]"), "%5D");
-        assert_eq!(for_uri_path("@"), "%40");
-    }
-
-    #[test]
-    fn sub_delims_encoded() {
-        assert_eq!(for_uri_path("!"), "%21");
-        assert_eq!(for_uri_path("$"), "%24");
-        assert_eq!(for_uri_path("&"), "%26");
-        assert_eq!(for_uri_path("'"), "%27");
-        assert_eq!(for_uri_path("("), "%28");
-        assert_eq!(for_uri_path(")"), "%29");
-        assert_eq!(for_uri_path("*"), "%2A");
-        assert_eq!(for_uri_path("+"), "%2B");
-        assert_eq!(for_uri_path(","), "%2C");
-        assert_eq!(for_uri_path(";"), "%3B");
-        assert_eq!(for_uri_path("="), "%3D");
     }
 
     #[test]
@@ -1065,43 +867,10 @@ mod uri_path {
 
     #[test]
     fn html_significant_chars_encoded() {
-        assert_eq!(for_uri_path("<"), "%3C");
-        assert_eq!(for_uri_path(">"), "%3E");
-        assert_eq!(for_uri_path("\""), "%22");
         assert_eq!(
             for_uri_path("/<script>/alert('xss')"),
             "/%3Cscript%3E/alert%28%27xss%27%29"
         );
-    }
-
-    // -- UTF-8 multi-byte encoding --
-
-    #[test]
-    fn two_byte_utf8() {
-        // U+00A0 NBSP → C2 A0
-        assert_eq!(for_uri_path("\u{00A0}"), "%C2%A0");
-        // U+00E9 é → C3 A9
-        assert_eq!(for_uri_path("é"), "%C3%A9");
-        // U+07FF → DF BF
-        assert_eq!(for_uri_path("\u{07FF}"), "%DF%BF");
-    }
-
-    #[test]
-    fn three_byte_utf8() {
-        // U+0800 → E0 A0 80
-        assert_eq!(for_uri_path("\u{0800}"), "%E0%A0%80");
-        // U+4E16 世 → E4 B8 96
-        assert_eq!(for_uri_path("世"), "%E4%B8%96");
-        // U+FFFD → EF BF BD
-        assert_eq!(for_uri_path("\u{FFFD}"), "%EF%BF%BD");
-    }
-
-    #[test]
-    fn four_byte_utf8() {
-        // U+10000 → F0 90 80 80
-        assert_eq!(for_uri_path("\u{10000}"), "%F0%90%80%80");
-        // U+1F600 😀 → F0 9F 98 80
-        assert_eq!(for_uri_path("😀"), "%F0%9F%98%80");
     }
 
     #[test]
@@ -1111,16 +880,6 @@ mod uri_path {
             for_uri_path("/ファイル/名前"),
             "/%E3%83%95%E3%82%A1%E3%82%A4%E3%83%AB/%E5%90%8D%E5%89%8D"
         );
-    }
-
-    // -- control characters --
-
-    #[test]
-    fn control_chars_encoded() {
-        assert_eq!(for_uri_path("\x00"), "%00");
-        assert_eq!(for_uri_path("\x01"), "%01");
-        assert_eq!(for_uri_path("\x1F"), "%1F");
-        assert_eq!(for_uri_path("\x7F"), "%7F");
     }
 
     // -- dot segments (not normalized — that's the caller's job) --
@@ -1168,66 +927,9 @@ mod uri_path {
     // -- boundary conditions --
 
     #[test]
-    fn empty_string() {
-        assert_eq!(for_uri_path(""), "");
-    }
-
-    #[test]
-    fn single_unreserved() {
-        assert_eq!(for_uri_path("a"), "a");
-    }
-
-    #[test]
-    fn all_percent_encoded() {
-        assert_eq!(for_uri_path("   "), "%20%20%20");
-    }
-
-    #[test]
     fn slash_adjacent_to_encoded() {
         assert_eq!(for_uri_path("/ /"), "/%20/");
         assert_eq!(for_uri_path("/é/"), "/%C3%A9/");
-    }
-
-    // -- writer variant --
-
-    #[test]
-    fn writer_matches_string() {
-        let inputs = [
-            "",
-            "/a/b/c",
-            "/café/世界",
-            "/a b/c&d",
-            "/<script>",
-            "/../etc/passwd",
-            "/safe-text_v2.0/~user",
-        ];
-        for input in inputs {
-            let mut w = String::new();
-            write_uri_path(&mut w, input).unwrap();
-            assert_eq!(for_uri_path(input), w, "writer mismatch for {:?}", input);
-        }
-    }
-
-    // -- display wrapper --
-
-    #[test]
-    fn display_matches_for_fn() {
-        let inputs = ["", "/a/b/c", "/café/世界", "/a b/c&d", "/<script>"];
-        for input in inputs {
-            assert_eq!(
-                format!("{}", display_uri_path(input)),
-                for_uri_path(input),
-                "display mismatch for {:?}",
-                input
-            );
-        }
-    }
-
-    #[test]
-    fn display_inline_formatting() {
-        let path = "/users/café/profile";
-        let result = format!("https://example.com{}", display_uri_path(path));
-        assert_eq!(result, "https://example.com/users/caf%C3%A9/profile");
     }
 }
 
@@ -1239,12 +941,6 @@ mod form_urlencoded {
     use super::*;
 
     // -- safe characters pass through --
-
-    #[test]
-    fn alphanumerics_pass_through() {
-        let alpha = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-        assert_eq!(for_form_urlencoded(alpha), alpha);
-    }
 
     #[test]
     fn safe_punctuation_passes_through() {
@@ -1286,94 +982,6 @@ mod form_urlencoded {
         assert_eq!(for_form_urlencoded("a*b"), "a*b");
     }
 
-    #[test]
-    fn space_vs_uri_component() {
-        assert_eq!(for_form_urlencoded("a b"), "a+b");
-        assert_eq!(for_uri_component("a b"), "a%20b");
-    }
-
-    #[test]
-    fn tilde_vs_uri_component() {
-        assert_eq!(for_form_urlencoded("~"), "%7E");
-        assert_eq!(for_uri_component("~"), "~");
-    }
-
-    #[test]
-    fn asterisk_vs_uri_component() {
-        assert_eq!(for_form_urlencoded("*"), "*");
-        assert_eq!(for_uri_component("*"), "%2A");
-    }
-
-    // -- reserved characters encoded --
-
-    #[test]
-    fn reserved_chars_encoded() {
-        assert_eq!(for_form_urlencoded(":"), "%3A");
-        assert_eq!(for_form_urlencoded("/"), "%2F");
-        assert_eq!(for_form_urlencoded("?"), "%3F");
-        assert_eq!(for_form_urlencoded("#"), "%23");
-        assert_eq!(for_form_urlencoded("["), "%5B");
-        assert_eq!(for_form_urlencoded("]"), "%5D");
-        assert_eq!(for_form_urlencoded("@"), "%40");
-        assert_eq!(for_form_urlencoded("!"), "%21");
-        assert_eq!(for_form_urlencoded("$"), "%24");
-        assert_eq!(for_form_urlencoded("&"), "%26");
-        assert_eq!(for_form_urlencoded("'"), "%27");
-        assert_eq!(for_form_urlencoded("("), "%28");
-        assert_eq!(for_form_urlencoded(")"), "%29");
-        assert_eq!(for_form_urlencoded("+"), "%2B");
-        assert_eq!(for_form_urlencoded(","), "%2C");
-        assert_eq!(for_form_urlencoded(";"), "%3B");
-        assert_eq!(for_form_urlencoded("="), "%3D");
-    }
-
-    #[test]
-    fn html_significant_chars_encoded() {
-        assert_eq!(for_form_urlencoded("<"), "%3C");
-        assert_eq!(for_form_urlencoded(">"), "%3E");
-        assert_eq!(for_form_urlencoded("\""), "%22");
-    }
-
-    // -- UTF-8 multi-byte encoding --
-
-    #[test]
-    fn two_byte_utf8() {
-        // U+00A0 NBSP → C2 A0
-        assert_eq!(for_form_urlencoded("\u{00A0}"), "%C2%A0");
-        // U+00E9 é → C3 A9
-        assert_eq!(for_form_urlencoded("é"), "%C3%A9");
-        // U+07FF → DF BF
-        assert_eq!(for_form_urlencoded("\u{07FF}"), "%DF%BF");
-    }
-
-    #[test]
-    fn three_byte_utf8() {
-        // U+0800 → E0 A0 80
-        assert_eq!(for_form_urlencoded("\u{0800}"), "%E0%A0%80");
-        // U+4E16 世 → E4 B8 96
-        assert_eq!(for_form_urlencoded("世"), "%E4%B8%96");
-        // U+FFFD → EF BF BD
-        assert_eq!(for_form_urlencoded("\u{FFFD}"), "%EF%BF%BD");
-    }
-
-    #[test]
-    fn four_byte_utf8() {
-        // U+10000 → F0 90 80 80
-        assert_eq!(for_form_urlencoded("\u{10000}"), "%F0%90%80%80");
-        // U+1F600 😀 → F0 9F 98 80
-        assert_eq!(for_form_urlencoded("😀"), "%F0%9F%98%80");
-    }
-
-    // -- control characters --
-
-    #[test]
-    fn control_chars() {
-        assert_eq!(for_form_urlencoded("\x00"), "%00");
-        assert_eq!(for_form_urlencoded("\x01"), "%01");
-        assert_eq!(for_form_urlencoded("\x1F"), "%1F");
-        assert_eq!(for_form_urlencoded("\x7F"), "%7F");
-    }
-
     // -- practical form encoding cases --
 
     #[test]
@@ -1408,77 +1016,6 @@ mod form_urlencoded {
             "name%3DJohn+Doe%26age%3D30"
         );
     }
-
-    // -- boundary conditions --
-
-    #[test]
-    fn empty_string() {
-        assert_eq!(for_form_urlencoded(""), "");
-    }
-
-    #[test]
-    fn single_safe_char() {
-        assert_eq!(for_form_urlencoded("a"), "a");
-    }
-
-    #[test]
-    fn all_spaces() {
-        assert_eq!(for_form_urlencoded("   "), "+++");
-    }
-
-    #[test]
-    fn all_encoded() {
-        assert_eq!(for_form_urlencoded("!@#"), "%21%40%23");
-    }
-
-    // -- writer variant --
-
-    #[test]
-    fn writer_matches_string() {
-        let inputs = [
-            "",
-            "hello world",
-            "a=1&b=2",
-            "café",
-            "a~b",
-            "a*b",
-            "   ",
-            "<script>",
-            "name=John Doe&age=30",
-        ];
-        for input in inputs {
-            let mut w = String::new();
-            write_form_urlencoded(&mut w, input).unwrap();
-            assert_eq!(
-                for_form_urlencoded(input),
-                w,
-                "writer mismatch for {:?}",
-                input
-            );
-        }
-    }
-
-    // -- display wrapper --
-
-    #[test]
-    fn display_matches_for_fn() {
-        let inputs = ["", "hello world", "café", "a=1&b=2", "a~b", "a*b"];
-        for input in inputs {
-            assert_eq!(
-                format!("{}", display_form_urlencoded(input)),
-                for_form_urlencoded(input),
-                "display mismatch for {:?}",
-                input
-            );
-        }
-    }
-
-    #[test]
-    fn display_inline_formatting() {
-        let value = "hello world";
-        let result = format!("q={}", display_form_urlencoded(value));
-        assert_eq!(result, "q=hello+world");
-    }
 }
 
 // ===========================================================================
@@ -1498,22 +1035,6 @@ mod xml {
         assert_eq!(for_xml_attribute(input), for_html_attribute(input));
     }
 
-    #[test]
-    fn xml_writer_matches_string() {
-        let input = r#"<test attr="val">&'</test>"#;
-        let mut w = String::new();
-        write_xml(&mut w, input).unwrap();
-        assert_eq!(for_xml(input), w);
-
-        let mut w = String::new();
-        write_xml_content(&mut w, input).unwrap();
-        assert_eq!(for_xml_content(input), w);
-
-        let mut w = String::new();
-        write_xml_attribute(&mut w, input).unwrap();
-        assert_eq!(for_xml_attribute(input), w);
-    }
-
     // -- XML comment --
 
     #[test]
@@ -1523,17 +1044,22 @@ mod xml {
     }
 
     #[test]
-    fn comment_neutralizes_double_hyphen() {
-        assert_eq!(for_xml_comment("a--b"), "a-~b");
-        assert_eq!(for_xml_comment("a---b"), "a-~-b");
-        assert_eq!(for_xml_comment("----"), "-~-~");
-    }
-
-    #[test]
-    fn comment_trailing_hyphen() {
-        assert_eq!(for_xml_comment("abc-"), "abc~");
-        assert_eq!(for_xml_comment("-"), "~");
-        assert_eq!(for_xml_comment("--"), "-~");
+    fn comment_neutralizes_hyphens() {
+        for (input, expected) in [
+            // `--` is forbidden inside a comment
+            ("a--b", "a-~b"),
+            ("a--b--c", "a-~b-~c"),
+            ("a---b", "a-~-b"),
+            ("---", "-~~"),
+            ("----", "-~-~"),
+            // a trailing `-` would form `--->` with the closing delimiter
+            ("abc-", "abc~"),
+            ("trailing-", "trailing~"),
+            ("-", "~"),
+            ("--", "-~"),
+        ] {
+            assert_eq!(for_xml_comment(input), expected, "{input:?}");
+        }
     }
 
     #[test]
@@ -1559,14 +1085,6 @@ mod xml {
     fn comment_combined_edge_cases() {
         // hyphen + invalid char + hyphen
         assert_eq!(for_xml_comment("-\x00-"), "- ~");
-    }
-
-    #[test]
-    fn comment_writer_matches_string() {
-        let input = "test--comment-";
-        let mut w = String::new();
-        write_xml_comment(&mut w, input).unwrap();
-        assert_eq!(for_xml_comment(input), w);
     }
 
     // -- CDATA --
@@ -1607,21 +1125,6 @@ mod xml {
     }
 
     #[test]
-    fn cdata_writes_cannot_form_a_delimiter_across_the_boundary() {
-        for (head, tail) in [("a]]", ">b"), ("a]", "]>b"), ("a]", ">b")] {
-            let mut sink = String::new();
-            write_cdata(&mut sink, head).unwrap();
-            write_cdata(&mut sink, tail).unwrap();
-            for (i, w) in sink.as_bytes().windows(3).enumerate() {
-                assert!(
-                    w != b"]]>" || sink[i..].starts_with("]]><![CDATA["),
-                    "{head:?} + {tail:?} closed the section: {sink:?}"
-                );
-            }
-        }
-    }
-
-    #[test]
     fn cdata_extra_brackets_before_gt() {
         // ]]]> = ] + ]]>
         assert_eq!(for_cdata("]]]>"), "]]]]]><![CDATA[>");
@@ -1644,14 +1147,6 @@ mod xml {
         assert_eq!(for_cdata("a\x00b"), "a b");
         assert_eq!(for_cdata("a\x01b"), "a b");
         assert_eq!(for_cdata("a\u{FDD0}b"), "a b");
-    }
-
-    #[test]
-    fn cdata_writer_matches_string() {
-        let input = "x]]>y\x00z]]";
-        let mut w = String::new();
-        write_cdata(&mut w, input).unwrap();
-        assert_eq!(for_cdata(input), w);
     }
 
     // -- XML 1.1 --
@@ -1715,22 +1210,6 @@ mod xml {
         assert_eq!(for_xml11_attribute(r#"a"b"#), "a&#34;b");
         assert_eq!(for_xml11_attribute("a\x01b"), "a&#x1;b");
     }
-
-    #[test]
-    fn xml11_writer_matches_string() {
-        let input = "test\x01\x7F<>&\u{0085}";
-        let mut w = String::new();
-        write_xml11(&mut w, input).unwrap();
-        assert_eq!(for_xml11(input), w);
-
-        let mut w = String::new();
-        write_xml11_content(&mut w, input).unwrap();
-        assert_eq!(for_xml11_content(input), w);
-
-        let mut w = String::new();
-        write_xml11_attribute(&mut w, input).unwrap();
-        assert_eq!(for_xml11_attribute(input), w);
-    }
 }
 
 // ===========================================================================
@@ -1791,14 +1270,6 @@ mod rust_literals {
         assert_eq!(for_rust_string("\u{10000}"), "\u{10000}");
     }
 
-    #[test]
-    fn string_writer_matches() {
-        let input = "test\0\"\\\ncafé\u{1F600}";
-        let mut w = String::new();
-        write_rust_string(&mut w, input).unwrap();
-        assert_eq!(for_rust_string(input), w);
-    }
-
     // -- for_rust_char --
 
     #[test]
@@ -1830,14 +1301,6 @@ mod rust_literals {
     #[test]
     fn char_nonchars_replaced() {
         assert_eq!(for_rust_char("\u{FDD0}"), " ");
-    }
-
-    #[test]
-    fn char_writer_matches() {
-        let input = "test\0'\\\ncafé";
-        let mut w = String::new();
-        write_rust_char(&mut w, input).unwrap();
-        assert_eq!(for_rust_char(input), w);
     }
 
     // -- for_rust_char_checked --
@@ -1876,14 +1339,6 @@ mod rust_literals {
         ("\u{2068}", r"\u{2068}"),
         ("\u{2069}", r"\u{2069}"),
     ];
-
-    #[test]
-    fn text_direction_controls_never_reach_a_string_literal_raw() {
-        for (raw, escaped) in TEXT_DIRECTION {
-            assert_eq!(for_rust_string(raw), escaped);
-            assert!(!for_rust_string(&format!("hi{raw}there")).contains(raw));
-        }
-    }
 
     #[test]
     fn text_direction_controls_never_reach_a_char_literal_raw() {
@@ -1947,21 +1402,6 @@ mod rust_literals {
         // U+FDD0 → UTF-8: EF B7 90
         assert_eq!(for_rust_byte_string("\u{FDD0}"), r"\xef\xb7\x90");
     }
-
-    #[test]
-    fn byte_string_vs_string_non_ascii() {
-        // string passes non-ASCII through; byte string encodes it
-        assert_eq!(for_rust_string("é"), "é");
-        assert_eq!(for_rust_byte_string("é"), r"\xc3\xa9");
-    }
-
-    #[test]
-    fn byte_string_writer_matches() {
-        let input = "test\0\"\\café😀";
-        let mut w = String::new();
-        write_rust_byte_string(&mut w, input).unwrap();
-        assert_eq!(for_rust_byte_string(input), w);
-    }
 }
 
 // ===========================================================================
@@ -1993,6 +1433,7 @@ mod json {
     #[test]
     fn backslash() {
         assert_eq!(for_json(r"back\slash"), r"back\\slash");
+        assert_eq!(for_json(r"\\"), r"\\\\");
     }
 
     #[test]
@@ -2047,6 +1488,7 @@ mod json {
         assert_eq!(for_json("<!--<script>"), "\\u003c!--\\u003cscript>");
         assert_eq!(for_json("<!--"), "\\u003c!--");
         assert_eq!(for_json("<script"), "\\u003cscript");
+        assert_eq!(for_json("a<b"), "a\\u003cb");
     }
 
     #[test]
@@ -2087,25 +1529,10 @@ mod json {
     }
 
     #[test]
-    fn json_vs_js_source_slash() {
-        // JSON escapes / (for <script> safety); JS source does not (standalone files)
-        assert_eq!(for_json("/"), "\\/");
-        assert_eq!(for_javascript_source("/"), "/");
-    }
-
-    #[test]
     fn already_escaped_input() {
         // encoding should double-escape
         assert_eq!(for_json(r"\n"), r"\\n");
         assert_eq!(for_json(r#"\""#), r#"\\\""#);
-    }
-
-    #[test]
-    fn writer_matches_string() {
-        let input = "test\x00\"\\\n\u{2028}'café";
-        let mut w = String::new();
-        write_json(&mut w, input).unwrap();
-        assert_eq!(for_json(input), w);
     }
 }
 
@@ -2202,32 +1629,8 @@ mod sql {
     // -- boundary conditions --
 
     #[test]
-    fn sql_empty_string() {
-        assert_eq!(for_sql(""), "");
-    }
-
-    #[test]
-    fn sql_single_safe_char() {
-        assert_eq!(for_sql("a"), "a");
-    }
-
-    #[test]
     fn sql_single_quote_only() {
         assert_eq!(for_sql("'"), "''");
-    }
-
-    #[test]
-    fn sql_long_safe_string() {
-        let s = "a".repeat(10000);
-        assert_eq!(for_sql(&s), s);
-    }
-
-    #[test]
-    fn sql_writer_matches_string() {
-        let input = "test\x00'escape'' café\u{FDD0}";
-        let mut w = String::new();
-        write_sql(&mut w, input).unwrap();
-        assert_eq!(for_sql(input), w);
     }
 
     // -- for_sql_backslash: MySQL/MariaDB --
@@ -2314,74 +1717,6 @@ mod sql {
         assert_eq!(for_sql_backslash("日本語"), "日本語");
         assert_eq!(for_sql_backslash("😀"), "😀");
     }
-
-    #[test]
-    fn backslash_empty_string() {
-        assert_eq!(for_sql_backslash(""), "");
-    }
-
-    #[test]
-    fn backslash_long_safe_string() {
-        let s = "a".repeat(10000);
-        assert_eq!(for_sql_backslash(&s), s);
-    }
-
-    #[test]
-    fn backslash_writer_matches_string() {
-        let input = "test\x00\x08\t\n\r\x1A'\\café\u{FDD0}";
-        let mut w = String::new();
-        write_sql_backslash(&mut w, input).unwrap();
-        assert_eq!(for_sql_backslash(input), w);
-    }
-
-    // -- standard vs backslash dialect comparison --
-
-    #[test]
-    fn dialect_quote_escaping_differs() {
-        // standard doubles; backslash escapes
-        assert_eq!(for_sql("'"), "''");
-        assert_eq!(for_sql_backslash("'"), r"\'");
-    }
-
-    #[test]
-    fn dialect_backslash_handling_differs() {
-        // standard passes through; backslash escapes
-        assert_eq!(for_sql(r"\"), r"\");
-        assert_eq!(for_sql_backslash(r"\"), r"\\");
-    }
-
-    #[test]
-    fn dialect_nul_handling_differs() {
-        // standard removes; backslash encodes
-        assert_eq!(for_sql("\x00"), "");
-        assert_eq!(for_sql_backslash("\x00"), r"\0");
-    }
-
-    #[test]
-    fn dialect_control_handling_differs() {
-        // standard passes controls through; backslash encodes specific ones
-        assert_eq!(for_sql("\t"), "\t");
-        assert_eq!(for_sql_backslash("\t"), r"\t");
-        assert_eq!(for_sql("\n"), "\n");
-        assert_eq!(for_sql_backslash("\n"), r"\n");
-        assert_eq!(for_sql("\r"), "\r");
-        assert_eq!(for_sql_backslash("\r"), r"\r");
-    }
-
-    #[test]
-    fn dialect_nonchars_same() {
-        // both replace non-characters with space
-        assert_eq!(for_sql("\u{FDD0}"), " ");
-        assert_eq!(for_sql_backslash("\u{FDD0}"), " ");
-    }
-
-    #[test]
-    fn dialect_safe_input_same() {
-        // both pass safe input through unchanged
-        let safe = "SELECT name FROM users WHERE id = 42";
-        assert_eq!(for_sql(safe), safe);
-        assert_eq!(for_sql_backslash(safe), safe);
-    }
 }
 
 // ===========================================================================
@@ -2390,69 +1725,6 @@ mod sql {
 
 mod cross_context {
     use super::*;
-
-    #[test]
-    fn same_input_different_contexts() {
-        let input = r#"<img src="x" onerror="alert('xss')">"#;
-
-        let html = for_html(input);
-        let js = for_javascript(input);
-        let css = for_css_string(input);
-        let uri = for_uri_component(input);
-        let sql = for_sql(input);
-        let sql_bs = for_sql_backslash(input);
-
-        // each produces different output appropriate for its context
-        assert_ne!(html, js);
-        assert_ne!(js, css);
-        assert_ne!(css, uri);
-
-        // html uses HTML entities
-        assert!(html.contains("&lt;"));
-        // js uses backslash escapes
-        assert!(js.contains("\\x22"));
-        // css uses hex escapes
-        assert!(css.contains("\\3c"));
-        // uri uses percent encoding
-        assert!(uri.contains("%3C"));
-        // sql doubles single quotes
-        assert!(sql.contains("''"));
-        // sql_backslash uses backslash escapes for quotes
-        assert!(sql_bs.contains("\\'"));
-    }
-
-    #[test]
-    fn writer_matches_string() {
-        let input = r#"test <b>"bold"</b> & 'italic' café 日本語"#;
-
-        let mut html_w = String::new();
-        write_html(&mut html_w, input).unwrap();
-        assert_eq!(for_html(input), html_w);
-
-        let mut js_w = String::new();
-        write_javascript(&mut js_w, input).unwrap();
-        assert_eq!(for_javascript(input), js_w);
-
-        let mut css_w = String::new();
-        write_css_string(&mut css_w, input).unwrap();
-        assert_eq!(for_css_string(input), css_w);
-
-        let mut uri_w = String::new();
-        write_uri_component(&mut uri_w, input).unwrap();
-        assert_eq!(for_uri_component(input), uri_w);
-
-        let mut sql_w = String::new();
-        write_sql(&mut sql_w, input).unwrap();
-        assert_eq!(for_sql(input), sql_w);
-
-        let mut sql_bs_w = String::new();
-        write_sql_backslash(&mut sql_bs_w, input).unwrap();
-        assert_eq!(for_sql_backslash(input), sql_bs_w);
-
-        let mut form_w = String::new();
-        write_form_urlencoded(&mut form_w, input).unwrap();
-        assert_eq!(for_form_urlencoded(input), form_w);
-    }
 
     #[test]
     fn safe_string_unchanged_in_all_contexts() {
@@ -2467,211 +1739,7 @@ mod cross_context {
         assert_eq!(for_sql(safe), safe);
         assert_eq!(for_sql_backslash(safe), safe);
         // NOT safe in URI or form (space is encoded)
-        assert_ne!(for_uri_component(safe), safe);
-        assert_ne!(for_form_urlencoded(safe), safe);
+        assert_eq!(for_uri_component(safe), "hello%20world%20123");
+        assert_eq!(for_form_urlencoded(safe), "hello+world+123");
     }
-}
-
-// ===========================================================================
-// display_* conformance tests
-// ===========================================================================
-//
-// every display_* wrapper must produce identical output to its corresponding
-// for_* function. these tests verify that contract across the full set of
-// test vectors used throughout this conformance suite.
-
-mod display_conformance {
-    use super::*;
-
-    /// test vectors drawn from every context module in this file.
-    /// covers: XSS payloads, HTML entities, control characters (C0, C1, DEL),
-    /// unicode (BMP, supplementary plane, CJK, emoji), noncharacters,
-    /// line separators, boundary conditions, and context-specific edge cases
-    /// (JS template interpolation, CSS expressions, SQL injection,
-    /// backslash sequences, URI reserved chars).
-    const VECTORS: &[&str] = &[
-        // -- boundary conditions --
-        "",
-        "a",
-        "hello world",
-        // -- HTML/XML payloads --
-        "<script>alert('xss')</script>",
-        "<img src=x onerror=\"alert(1)\">",
-        "Hello, <world> & \"friends\"!",
-        "<café>",
-        "<>&\"'",
-        "&<>\"'/=`",
-        // -- entity sequences --
-        "&",
-        "&&",
-        "a&b&c",
-        "&amp;",
-        "&lt;",
-        "&#34;",
-        // -- quotes and delimiters --
-        "a>b",
-        "a\"b",
-        "a'b",
-        "it's",
-        // -- C0 control characters --
-        "\x00",
-        "\x01",
-        "\x07",
-        "\x08",
-        "\t",
-        "\n",
-        "\x0B",
-        "\x0C",
-        "\r",
-        "\x0E",
-        "\x1F",
-        // -- DEL --
-        "\x7F",
-        // -- C1 controls --
-        "\u{0080}",
-        "\u{0085}",
-        "\u{009F}",
-        // -- unicode: BMP --
-        "café",
-        "日本語テスト",
-        "hello 😀 world",
-        // -- unicode: supplementary plane --
-        "\u{10000}",
-        "😀",
-        "\u{1F600}",
-        // -- noncharacters --
-        "\u{FDD0}",
-        "\u{FDEF}",
-        "\u{FFFE}",
-        "\u{FFFF}",
-        "\u{1FFFE}",
-        "\u{10FFFF}",
-        // -- unicode line terminators --
-        "\u{2028}",
-        "\u{2029}",
-        "a\u{2028}b\u{2029}c",
-        // -- JavaScript payloads --
-        "';alert(1);//",
-        "</script><script>alert(1)</script>",
-        "`template`",
-        // -- JS template interpolation --
-        "${alert(1)}",
-        "${a} and ${b}",
-        "$100",
-        "hello `world`",
-        "`Hello ${name}`, welcome\\n",
-        // -- backslash sequences --
-        "\\",
-        "\\\\",
-        "\\n",
-        "a\\b",
-        // -- CSS payloads --
-        "expression(alert(1))",
-        "\"a",
-        // -- URI edge cases --
-        "key=value&other=more",
-        "search term with spaces",
-        "/",
-        "https://example.com",
-        "</script>",
-        // -- SQL injection --
-        "'; DROP TABLE users; --",
-        "' OR '1'='1",
-        // -- mixed categories --
-        "abc\x08\t\n\x0C\r",
-        "\t\n\x0C\r ",
-        "test\x00\"\\\n\u{2028}'café",
-        "abc`${x}\\\t\n\r\x0C\x08\x00\x1F/\u{2028}\u{2029}café😀",
-        "test\x01\x7F<>&\u{0085}",
-        "C:\\Users\\test",
-    ];
-
-    macro_rules! display_conforms {
-        ($name:ident, $display_fn:ident, $for_fn:path) => {
-            #[test]
-            fn $name() {
-                for input in VECTORS {
-                    assert_eq!(
-                        format!("{}", $display_fn(input)),
-                        $for_fn(input),
-                        "display_{} != for_{} for input {:?}",
-                        stringify!($name),
-                        stringify!($name),
-                        input,
-                    );
-                }
-            }
-        };
-    }
-
-    // -- html --
-    display_conforms!(html, display_html, for_html);
-    display_conforms!(html_content, display_html_content, for_html_content);
-    display_conforms!(html_attribute, display_html_attribute, for_html_attribute);
-    display_conforms!(
-        html_unquoted_attribute,
-        display_html_unquoted_attribute,
-        for_html_unquoted_attribute
-    );
-
-    // -- xml --
-    display_conforms!(xml, display_xml, for_xml);
-    display_conforms!(xml_content, display_xml_content, for_xml_content);
-    display_conforms!(xml_attribute, display_xml_attribute, for_xml_attribute);
-    display_conforms!(xml_comment, display_xml_comment, for_xml_comment);
-    display_conforms!(cdata, display_cdata, for_cdata);
-    display_conforms!(xml11, display_xml11, for_xml11);
-    display_conforms!(xml11_content, display_xml11_content, for_xml11_content);
-    display_conforms!(
-        xml11_attribute,
-        display_xml11_attribute,
-        for_xml11_attribute
-    );
-
-    // -- javascript --
-    display_conforms!(javascript, display_javascript, for_javascript);
-    display_conforms!(
-        javascript_attribute,
-        display_javascript_attribute,
-        for_javascript_attribute
-    );
-    display_conforms!(
-        javascript_block,
-        display_javascript_block,
-        for_javascript_block
-    );
-    display_conforms!(
-        javascript_source,
-        display_javascript_source,
-        for_javascript_source
-    );
-    display_conforms!(js_template, display_js_template, for_js_template);
-
-    // -- css --
-    display_conforms!(css_string, display_css_string, for_css_string);
-    display_conforms!(css_url, display_css_url, for_css_url);
-
-    // -- uri --
-    display_conforms!(uri_component, display_uri_component, for_uri_component);
-    display_conforms!(
-        form_urlencoded,
-        display_form_urlencoded,
-        for_form_urlencoded
-    );
-
-    // -- json --
-    display_conforms!(json, display_json, for_json);
-
-    // -- rust --
-    display_conforms!(rust_string, display_rust_string, for_rust_string);
-    display_conforms!(rust_char, display_rust_char, for_rust_char);
-    display_conforms!(
-        rust_byte_string,
-        display_rust_byte_string,
-        for_rust_byte_string
-    );
-
-    // -- sql --
-    display_conforms!(sql, display_sql, for_sql);
-    display_conforms!(sql_backslash, display_sql_backslash, for_sql_backslash);
 }

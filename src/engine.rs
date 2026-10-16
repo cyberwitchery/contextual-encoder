@@ -240,39 +240,7 @@ pub(crate) fn is_unicode_noncharacter(cp: u32) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use std::fmt::Write;
-
     use super::*;
-
-    #[test]
-    fn invalid_xml_detects_c0_controls() {
-        assert!(is_invalid_for_xml('\x00'));
-        assert!(is_invalid_for_xml('\x01'));
-        assert!(is_invalid_for_xml('\x08'));
-        assert!(is_invalid_for_xml('\x0B'));
-        assert!(is_invalid_for_xml('\x0C'));
-        assert!(is_invalid_for_xml('\x0E'));
-        assert!(is_invalid_for_xml('\x1F'));
-    }
-
-    #[test]
-    fn invalid_xml_allows_tab_lf_cr() {
-        assert!(!is_invalid_for_xml('\t'));
-        assert!(!is_invalid_for_xml('\n'));
-        assert!(!is_invalid_for_xml('\r'));
-    }
-
-    #[test]
-    fn invalid_xml_detects_del() {
-        assert!(is_invalid_for_xml('\x7F'));
-    }
-
-    #[test]
-    fn invalid_xml_detects_c1_controls() {
-        assert!(is_invalid_for_xml('\u{0080}'));
-        assert!(is_invalid_for_xml('\u{0085}')); // NEL
-        assert!(is_invalid_for_xml('\u{009F}'));
-    }
 
     #[test]
     fn invalid_xml_allows_normal_chars() {
@@ -282,66 +250,5 @@ mod tests {
         assert!(!is_invalid_for_xml('0'));
         assert!(!is_invalid_for_xml('\u{00A0}')); // NBSP
         assert!(!is_invalid_for_xml('\u{4E16}')); // CJK
-    }
-
-    #[test]
-    fn noncharacter_detection() {
-        assert!(is_unicode_noncharacter(0xFDD0));
-        assert!(is_unicode_noncharacter(0xFDEF));
-        assert!(is_unicode_noncharacter(0xFFFE));
-        assert!(is_unicode_noncharacter(0xFFFF));
-        assert!(is_unicode_noncharacter(0x1FFFE));
-        assert!(is_unicode_noncharacter(0x1FFFF));
-        assert!(is_unicode_noncharacter(0x10FFFE));
-        assert!(is_unicode_noncharacter(0x10FFFF));
-
-        assert!(!is_unicode_noncharacter(0xFDCF));
-        assert!(!is_unicode_noncharacter(0xFDF0));
-        assert!(!is_unicode_noncharacter(0xFFFD));
-        assert!(!is_unicode_noncharacter(0x10000));
-    }
-
-    #[test]
-    fn encode_loop_passthrough() {
-        let mut out = String::new();
-        encode_loop(&mut out, "hello", |_| false, |_, _, _| unreachable!()).unwrap();
-        assert_eq!(out, "hello");
-    }
-
-    #[test]
-    fn encode_loop_encodes_flagged_chars() {
-        let mut out = String::new();
-        encode_loop(
-            &mut out,
-            "a<b",
-            |c| c == '<',
-            |out, _, _| out.write_str("&lt;"),
-        )
-        .unwrap();
-        assert_eq!(out, "a&lt;b");
-    }
-
-    #[test]
-    fn encode_loop_empty_input() {
-        let mut out = String::new();
-        encode_loop(&mut out, "", |_| false, |_, _, _| unreachable!()).unwrap();
-        assert_eq!(out, "");
-    }
-
-    #[test]
-    fn encode_loop_provides_lookahead() {
-        let mut seen_next = Vec::new();
-        let mut out = String::new();
-        encode_loop(
-            &mut out,
-            "abc",
-            |_| true,
-            |out, c, next| {
-                seen_next.push(next);
-                out.write_char(c)
-            },
-        )
-        .unwrap();
-        assert_eq!(seen_next, vec![Some('b'), Some('c'), None]);
     }
 }

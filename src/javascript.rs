@@ -362,6 +362,8 @@ fn write_js_shared_escape<W: fmt::Write>(out: &mut W, c: char) -> fmt::Result {
 mod tests {
     use super::*;
 
+    type ForFn = fn(&str) -> String;
+
     /// the bidi formatting controls, with their escaped forms.
     const TEXT_DIRECTION: [(&str, &str); 9] = [
         ("\u{202A}", r"\u202a"),
@@ -375,139 +377,38 @@ mod tests {
         ("\u{2069}", r"\u2069"),
     ];
 
-    // -- for_javascript (universal) --
-
     #[test]
-    fn js_no_encoding_needed() {
-        assert_eq!(for_javascript("hello world"), "hello world");
-        assert_eq!(for_javascript(""), "");
-    }
-
-    #[test]
-    fn js_encodes_quotes_as_hex() {
-        assert_eq!(for_javascript(r#"a"b"#), r"a\x22b");
-        assert_eq!(for_javascript("a'b"), r"a\x27b");
-    }
-
-    #[test]
-    fn js_encodes_backslash() {
-        assert_eq!(for_javascript(r"a\b"), r"a\\b");
-    }
-
-    #[test]
-    fn js_encodes_ampersand() {
-        assert_eq!(for_javascript("a&b"), r"a\x26b");
-    }
-
-    #[test]
-    fn js_encodes_slash() {
-        assert_eq!(for_javascript("a/b"), r"a\/b");
-        assert_eq!(for_javascript("</script>"), r"\x3c\/script>");
-    }
-
-    #[test]
-    fn js_encodes_lt() {
-        assert_eq!(for_javascript("a<b"), r"a\x3cb");
-        assert_eq!(for_javascript("<!--<script>"), r"\x3c!--\x3cscript>");
-        assert_eq!(for_javascript("<!--"), r"\x3c!--");
-        assert_eq!(for_javascript("<script"), r"\x3cscript");
-    }
-
-    #[test]
-    fn js_encodes_control_chars() {
-        assert_eq!(for_javascript("\x00"), r"\x00");
-        assert_eq!(for_javascript("\x08"), r"\b");
-        assert_eq!(for_javascript("\t"), r"\t");
-        assert_eq!(for_javascript("\n"), r"\n");
-        assert_eq!(for_javascript("\x0B"), r"\x0b");
-        assert_eq!(for_javascript("\x0C"), r"\f");
-        assert_eq!(for_javascript("\r"), r"\r");
-        assert_eq!(for_javascript("\x1F"), r"\x1f");
-    }
-
-    #[test]
-    fn js_encodes_line_separators() {
-        assert_eq!(for_javascript("\u{2028}"), r"\u2028");
-        assert_eq!(for_javascript("\u{2029}"), r"\u2029");
-    }
-
-    #[test]
-    fn js_escapes_text_direction_controls() {
-        for (raw, escaped) in TEXT_DIRECTION {
-            assert_eq!(for_javascript(raw), escaped);
-            assert_eq!(for_javascript(&format!("a{raw}b")), format!("a{escaped}b"));
+    fn escapes_text_direction_controls() {
+        let encoders: [(&str, ForFn); 5] = [
+            ("javascript", for_javascript),
+            ("javascript_attribute", for_javascript_attribute),
+            ("javascript_block", for_javascript_block),
+            ("javascript_source", for_javascript_source),
+            ("js_template", for_js_template),
+        ];
+        for (name, encode) in encoders {
+            for (raw, escaped) in TEXT_DIRECTION {
+                assert_eq!(encode(raw), escaped, "{name}: {raw:?}");
+                assert_eq!(
+                    encode(&format!("a{raw}b")),
+                    format!("a{escaped}b"),
+                    "{name}: a{raw:?}b"
+                );
+            }
         }
-    }
-
-    #[test]
-    fn js_preserves_non_ascii() {
-        assert_eq!(for_javascript("café"), "café");
-        assert_eq!(for_javascript("日本語"), "日本語");
-    }
-
-    #[test]
-    fn js_writer_variant() {
-        let mut out = String::new();
-        write_javascript(&mut out, "a'b").unwrap();
-        assert_eq!(out, r"a\x27b");
-    }
-
-    // -- for_javascript_attribute --
-
-    #[test]
-    fn js_attr_does_not_encode_slash_or_lt() {
-        assert_eq!(for_javascript_attribute("a/b"), "a/b");
-        assert_eq!(for_javascript_attribute("<!--<script>"), "<!--<script>");
-    }
-
-    #[test]
-    fn js_attr_encodes_quotes_as_hex() {
-        assert_eq!(for_javascript_attribute("a'b"), r"a\x27b");
-    }
-
-    #[test]
-    fn js_attr_encodes_ampersand() {
-        assert_eq!(for_javascript_attribute("a&b"), r"a\x26b");
-    }
-
-    #[test]
-    fn js_attr_escapes_text_direction_controls() {
         for (raw, escaped) in TEXT_DIRECTION {
-            assert_eq!(for_javascript_attribute(raw), escaped);
+            assert_eq!(
+                for_javascript_source(&format!("var x = '{raw}';")),
+                format!(r"var x = \'{escaped}\';")
+            );
         }
     }
 
     // -- for_javascript_block --
 
     #[test]
-    fn js_block_uses_backslash_quotes() {
-        assert_eq!(for_javascript_block(r#"a"b"#), r#"a\"b"#);
-        assert_eq!(for_javascript_block("a'b"), r"a\'b");
-    }
-
-    #[test]
     fn js_block_encodes_slash() {
         assert_eq!(for_javascript_block("a/b"), r"a\/b");
-    }
-
-    #[test]
-    fn js_block_encodes_lt() {
-        assert_eq!(for_javascript_block("a<b"), r"a\x3cb");
-        assert_eq!(for_javascript_block("<!--<script>"), r"\x3c!--\x3cscript>");
-        assert_eq!(for_javascript_block("<!--"), r"\x3c!--");
-        assert_eq!(for_javascript_block("<script"), r"\x3cscript");
-    }
-
-    #[test]
-    fn js_block_encodes_ampersand() {
-        assert_eq!(for_javascript_block("a&b"), r"a\x26b");
-    }
-
-    #[test]
-    fn js_block_escapes_text_direction_controls() {
-        for (raw, escaped) in TEXT_DIRECTION {
-            assert_eq!(for_javascript_block(raw), escaped);
-        }
     }
 
     // -- for_javascript_source --
@@ -518,159 +419,7 @@ mod tests {
         assert_eq!(for_javascript_source("a'b"), r"a\'b");
     }
 
-    #[test]
-    fn js_source_does_not_encode_slash_ampersand_or_lt() {
-        assert_eq!(for_javascript_source("a/b&c"), "a/b&c");
-        assert_eq!(for_javascript_source("<!--<script>"), "<!--<script>");
-    }
-
-    #[test]
-    fn js_source_encodes_line_separators() {
-        assert_eq!(for_javascript_source("\u{2028}"), r"\u2028");
-    }
-
-    #[test]
-    fn js_source_escapes_text_direction_controls() {
-        for (raw, escaped) in TEXT_DIRECTION {
-            assert_eq!(for_javascript_source(raw), escaped);
-            assert_eq!(
-                for_javascript_source(&format!("var x = '{raw}';")),
-                format!(r"var x = \'{escaped}\';")
-            );
-        }
-    }
-
-    // -- for_js_template --
-
-    #[test]
-    fn js_template_no_encoding_needed() {
-        assert_eq!(for_js_template("hello world"), "hello world");
-        assert_eq!(for_js_template(""), "");
-    }
-
-    #[test]
-    fn js_template_encodes_backtick() {
-        assert_eq!(for_js_template("hello `world`"), r"hello \`world\`");
-        assert_eq!(for_js_template("`"), r"\`");
-    }
-
-    #[test]
-    fn js_template_encodes_interpolation() {
-        assert_eq!(for_js_template("${alert(1)}"), r"\${alert(1)}");
-        assert_eq!(for_js_template("a${b}c"), r"a\${b}c");
-        assert_eq!(for_js_template("${a}${b}"), r"\${a}\${b}");
-    }
-
-    #[test]
-    fn js_template_dollar_without_brace_passes_through() {
-        assert_eq!(for_js_template("a $ b"), "a $ b");
-        assert_eq!(for_js_template("$100"), "$100");
-    }
-
-    #[test]
-    fn js_template_escapes_trailing_dollar() {
-        assert_eq!(for_js_template("a$"), r"a\$");
-        assert_eq!(for_js_template("$"), r"\$");
-    }
-
-    #[test]
-    fn js_template_encodes_backslash() {
-        assert_eq!(for_js_template(r"a\b"), r"a\\b");
-    }
-
-    #[test]
-    fn js_template_encodes_slash() {
-        assert_eq!(for_js_template("a/b"), r"a\/b");
-        assert_eq!(for_js_template("</script>"), r"\x3c\/script>");
-    }
-
-    #[test]
-    fn js_template_encodes_lt() {
-        assert_eq!(for_js_template("a<b"), r"a\x3cb");
-        assert_eq!(for_js_template("<!--<script>"), r"\x3c!--\x3cscript>");
-        assert_eq!(for_js_template("<!--"), r"\x3c!--");
-        assert_eq!(for_js_template("<script"), r"\x3cscript");
-    }
-
-    #[test]
-    fn js_template_does_not_encode_quotes() {
-        assert_eq!(for_js_template(r#"a"b"#), r#"a"b"#);
-        assert_eq!(for_js_template("a'b"), "a'b");
-    }
-
-    #[test]
-    fn js_template_encodes_control_chars() {
-        assert_eq!(for_js_template("\x00"), r"\x00");
-        assert_eq!(for_js_template("\x08"), r"\b");
-        assert_eq!(for_js_template("\t"), r"\t");
-        assert_eq!(for_js_template("\n"), r"\n");
-        assert_eq!(for_js_template("\x0B"), r"\x0b");
-        assert_eq!(for_js_template("\x0C"), r"\f");
-        assert_eq!(for_js_template("\r"), r"\r");
-        assert_eq!(for_js_template("\x1F"), r"\x1f");
-    }
-
-    #[test]
-    fn js_template_escapes_text_direction_controls() {
-        for (raw, escaped) in TEXT_DIRECTION {
-            assert_eq!(for_js_template(raw), escaped);
-            assert_eq!(for_js_template(&format!("a{raw}b")), format!("a{escaped}b"));
-        }
-    }
-
-    #[test]
-    fn js_template_encodes_line_separators() {
-        assert_eq!(for_js_template("\u{2028}"), r"\u2028");
-        assert_eq!(for_js_template("\u{2029}"), r"\u2029");
-    }
-
-    #[test]
-    fn js_template_preserves_non_ascii() {
-        assert_eq!(for_js_template("café"), "café");
-        assert_eq!(for_js_template("日本語"), "日本語");
-        assert_eq!(for_js_template("😀"), "😀");
-    }
-
-    #[test]
-    fn js_template_mixed_input() {
-        assert_eq!(
-            for_js_template("`Hello ${name}`, welcome\\n"),
-            r"\`Hello \${name}\`, welcome\\n"
-        );
-    }
-
-    #[test]
-    fn js_template_writer_variant() {
-        let input = "`test` ${x} café";
-        let string_result = for_js_template(input);
-        let mut writer_result = String::new();
-        write_js_template(&mut writer_result, input).unwrap();
-        assert_eq!(string_result, writer_result);
-    }
-
     // -- write_js_shared_escape helper --
-
-    #[test]
-    fn shared_escape_handles_shared_chars() {
-        let cases = [
-            ('\x08', r"\b"),
-            ('\t', r"\t"),
-            ('\n', r"\n"),
-            ('\x0B', r"\x0b"),
-            ('\x0C', r"\f"),
-            ('\r', r"\r"),
-            ('\\', r"\\"),
-            ('\x00', r"\x00"),
-            ('\x1F', r"\x1f"),
-            ('\u{2028}', r"\u2028"),
-            ('\u{2029}', r"\u2029"),
-        ];
-        for (c, expected) in cases {
-            let mut out = String::new();
-            assert_eq!(write_js_shared_escape(&mut out, c), Ok(()));
-            assert_eq!(out, expected);
-        }
-    }
 
     #[test]
     fn shared_escape_never_drops_a_character() {

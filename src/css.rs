@@ -175,33 +175,6 @@ mod tests {
     // -- for_css_string --
 
     #[test]
-    fn css_string_no_encoding_needed() {
-        assert_eq!(for_css_string("hello"), "hello");
-        assert_eq!(for_css_string(""), "");
-    }
-
-    #[test]
-    fn css_string_encodes_double_quote() {
-        // " (0x22) → \22, followed by space because 'b' is a hex digit
-        assert_eq!(for_css_string(r#"a"b"#), r"a\22 b");
-        // " at end → separator space, absorbed by the escape on decode
-        assert_eq!(for_css_string(r#"a""#), r"a\22 ");
-    }
-
-    #[test]
-    fn css_string_encodes_single_quote() {
-        // ' (0x27) → \27, 'z' is not a hex digit → no space
-        assert_eq!(for_css_string("a'z"), r"a\27z");
-        // ' (0x27) → \27, '1' is a hex digit → space
-        assert_eq!(for_css_string("a'1"), r"a\27 1");
-    }
-
-    #[test]
-    fn css_string_encodes_backslash() {
-        assert_eq!(for_css_string(r"a\b"), r"a\5c b");
-    }
-
-    #[test]
     fn css_string_encodes_angle_brackets() {
         // x is not a hex digit, so no trailing space after \3c
         assert_eq!(for_css_string("<x>"), r"\3cx\3e ");
@@ -210,11 +183,6 @@ mod tests {
     #[test]
     fn css_string_encodes_ampersand() {
         assert_eq!(for_css_string("a&b"), r"a\26 b");
-    }
-
-    #[test]
-    fn css_string_encodes_parens() {
-        assert_eq!(for_css_string("a(b)"), r"a\28 b\29 ");
     }
 
     #[test]
@@ -235,27 +203,9 @@ mod tests {
     }
 
     #[test]
-    fn css_string_encodes_c1_controls() {
-        assert_eq!(for_css_string("\u{0080}"), r"\80 ");
-        assert_eq!(for_css_string("\u{0085}"), r"\85 ");
-        assert_eq!(for_css_string("\u{009F}"), r"\9f ");
-        // next char is hex digit → trailing space
-        assert_eq!(for_css_string("\u{0080}a"), r"\80 a");
-        // next char is not hex → no trailing space
-        assert_eq!(for_css_string("\u{0080}z"), r"\80z");
-    }
-
-    #[test]
     fn css_string_encodes_line_separators() {
         assert_eq!(for_css_string("\u{2028}"), r"\2028 ");
         assert_eq!(for_css_string("\u{2029}"), r"\2029 ");
-    }
-
-    #[test]
-    fn css_string_encodes_text_direction_controls() {
-        for (raw, escaped) in TEXT_DIRECTION {
-            assert_eq!(for_css_string(&format!("a{raw}z")), format!("a{escaped}z"));
-        }
     }
 
     #[test]
@@ -268,70 +218,7 @@ mod tests {
         }
     }
 
-    #[test]
-    fn css_string_replaces_nonchars_with_underscore() {
-        assert_eq!(for_css_string("\u{FDD0}"), "_");
-        assert_eq!(for_css_string("\u{FFFE}"), "_");
-        assert_eq!(for_css_string("\u{FFFF}"), "_");
-    }
-
-    #[test]
-    fn css_string_separator_before_whitespace() {
-        // \27 followed by space → needs separator → \27 + space + space
-        // first space is the separator, second is the content space
-        assert_eq!(for_css_string("' "), r"\27  ");
-    }
-
-    #[test]
-    fn css_string_preserves_non_ascii() {
-        assert_eq!(for_css_string("café"), "café");
-    }
-
-    #[test]
-    fn css_string_writer_variant() {
-        let mut out = String::new();
-        // b is a hex digit, so trailing space after \27
-        write_css_string(&mut out, "a'b").unwrap();
-        assert_eq!(out, r"a\27 b");
-    }
-
     // -- for_css_url --
-
-    #[test]
-    fn css_url_encodes_parens() {
-        assert_eq!(for_css_url("a(b)c"), r"a\28 b\29 c");
-    }
-
-    #[test]
-    fn css_url_encodes_space() {
-        assert_eq!(for_css_url("a b"), r"a\20 b");
-        assert_eq!(for_css_url(" "), r"\20 ");
-    }
-
-    #[test]
-    fn css_url_preserves_unicode_spaces() {
-        assert_eq!(for_css_url("a\u{a0}b"), "a\u{a0}b");
-        assert_eq!(for_css_url("a\u{2003}b"), "a\u{2003}b");
-        assert_eq!(for_css_url("a\u{3000}b"), "a\u{3000}b");
-    }
-
-    #[test]
-    fn css_url_encodes_quotes() {
-        // b is a hex digit, so trailing space after \27
-        assert_eq!(for_css_url("a'b"), r"a\27 b");
-    }
-
-    #[test]
-    fn css_url_encodes_backslash() {
-        assert_eq!(for_css_url(r"a\b"), r"a\5c b");
-    }
-
-    #[test]
-    fn css_url_encodes_c1_controls() {
-        assert_eq!(for_css_url("\u{0080}"), r"\80 ");
-        assert_eq!(for_css_url("\u{0085}"), r"\85 ");
-        assert_eq!(for_css_url("\u{009F}"), r"\9f ");
-    }
 
     #[test]
     fn css_url_encodes_text_direction_controls() {
