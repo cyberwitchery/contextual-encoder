@@ -4,6 +4,8 @@
 
 - **breaking:** `for_html_unquoted_attribute` now replaces NEL (U+0085) with `-`, like the other C1 controls. the `&#133;` it emitted decodes as U+2026 (`…`) in an HTML5 parser, not as NEL
 - **breaking:** the XML 1.1 encoders (`for_xml11`, `for_xml11_content`, `for_xml11_attribute`) now encode NEL (U+0085) as `&#x85;` and line separator (U+2028) as `&#x2028;`. emitted raw, an XML 1.1 parser normalized both to a line feed
+- **breaking:** `for_xml_comment` now replaces every `-` with `~`, as OWASP Java Encoder 1.5.0 does (GHSA-g8p6-7r8f-qrpv). a leading `-` passed through, so after trusted comment text ending in `-` it could close the comment and inject markup
+- **breaking:** `for_cdata` now splits the CDATA section at every `]` (as `]]>]<![CDATA[`) and every `>` (as `]]><![CDATA[>`), as OWASP Java Encoder 1.5.0 does (GHSA-g8p6-7r8f-qrpv), so the output can be up to 13 times longer. a leading `>` or `]>` completed `]]>` after trusted CDATA text ending in `]]` or `]` and could inject markup
 
 ## [0.10.0] - 2026-09-06
 

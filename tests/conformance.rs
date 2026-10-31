@@ -1047,16 +1047,19 @@ mod xml {
     fn comment_neutralizes_hyphens() {
         for (input, expected) in [
             // `--` is forbidden inside a comment
-            ("a--b", "a-~b"),
-            ("a--b--c", "a-~b-~c"),
-            ("a---b", "a-~-b"),
-            ("---", "-~~"),
-            ("----", "-~-~"),
+            ("a--b", "a~~b"),
+            ("a--b--c", "a~~b~~c"),
+            ("a---b", "a~~~b"),
+            ("---", "~~~"),
+            ("----", "~~~~"),
             // a trailing `-` would form `--->` with the closing delimiter
             ("abc-", "abc~"),
             ("trailing-", "trailing~"),
             ("-", "~"),
-            ("--", "-~"),
+            ("--", "~~"),
+            // a leading `-` would form `--` after trusted text ending in `-`
+            ("-><evil/>", "~><evil/>"),
+            ("-a-b", "~a~b"),
         ] {
             assert_eq!(for_xml_comment(input), expected, "{input:?}");
         }
@@ -1084,7 +1087,7 @@ mod xml {
     #[test]
     fn comment_combined_edge_cases() {
         // hyphen + invalid char + hyphen
-        assert_eq!(for_xml_comment("-\x00-"), "- ~");
+        assert_eq!(for_xml_comment("-\x00-"), "~ ~");
     }
 
     // -- CDATA --
@@ -1093,53 +1096,75 @@ mod xml {
     fn cdata_safe_passthrough() {
         assert_eq!(for_cdata("safe text"), "safe text");
         assert_eq!(for_cdata(""), "");
-        // angle brackets are fine inside CDATA
-        assert_eq!(for_cdata("<b>bold</b>"), "<b>bold</b>");
+        // `<` and `&` are fine inside CDATA
+        assert_eq!(for_cdata("a < b && c"), "a < b && c");
     }
 
     #[test]
     fn cdata_splits_closing_delimiter() {
-        assert_eq!(for_cdata("a]]>b"), "a]]]]><![CDATA[>b");
+        assert_eq!(
+            for_cdata("a]]>b"),
+            "a]]>]<![CDATA[]]>]<![CDATA[]]><![CDATA[>b"
+        );
     }
 
     #[test]
     fn cdata_multiple_splits() {
-        assert_eq!(for_cdata("x]]>y]]>z"), "x]]]]><![CDATA[>y]]]]><![CDATA[>z");
+        assert_eq!(
+            for_cdata("x]]>y]]>z"),
+            "x]]>]<![CDATA[]]>]<![CDATA[]]><![CDATA[>y]]>]<![CDATA[]]>]<![CDATA[]]><![CDATA[>z"
+        );
+        assert_eq!(
+            for_cdata("<b>bold</b>"),
+            "<b]]><![CDATA[>bold</b]]><![CDATA[>"
+        );
     }
 
     #[test]
     fn cdata_brackets_without_gt() {
         // brackets away from the end
-        assert_eq!(for_cdata("]]a"), "]]a");
-        assert_eq!(for_cdata("a]b"), "a]b");
+        assert_eq!(for_cdata("]]a"), "]]>]<![CDATA[]]>]<![CDATA[a");
+        assert_eq!(for_cdata("a]b"), "a]]>]<![CDATA[b");
         // single bracket + >
-        assert_eq!(for_cdata("]>"), "]>");
+        assert_eq!(for_cdata("]>"), "]]>]<![CDATA[]]><![CDATA[>");
     }
 
     #[test]
     fn cdata_splits_trailing_bracket() {
-        assert_eq!(for_cdata("]"), "]]]><![CDATA[");
-        assert_eq!(for_cdata("]]"), "]]]]><![CDATA[");
-        assert_eq!(for_cdata("]]]"), "]]]]]><![CDATA[");
-        assert_eq!(for_cdata("a]"), "a]]]><![CDATA[");
+        assert_eq!(for_cdata("]"), "]]>]<![CDATA[");
+        assert_eq!(for_cdata("]]"), "]]>]<![CDATA[]]>]<![CDATA[");
+        assert_eq!(for_cdata("]]]"), "]]>]<![CDATA[]]>]<![CDATA[]]>]<![CDATA[");
+        assert_eq!(for_cdata("a]"), "a]]>]<![CDATA[");
     }
 
     #[test]
     fn cdata_extra_brackets_before_gt() {
         // ]]]> = ] + ]]>
-        assert_eq!(for_cdata("]]]>"), "]]]]]><![CDATA[>");
+        assert_eq!(
+            for_cdata("]]]>"),
+            "]]>]<![CDATA[]]>]<![CDATA[]]>]<![CDATA[]]><![CDATA[>"
+        );
         // ]]]]> = ]] + ]]>
-        assert_eq!(for_cdata("]]]]>"), "]]]]]]><![CDATA[>");
+        assert_eq!(
+            for_cdata("]]]]>"),
+            "]]>]<![CDATA[]]>]<![CDATA[]]>]<![CDATA[]]>]<![CDATA[]]><![CDATA[>"
+        );
     }
 
     #[test]
     fn cdata_at_start() {
-        assert_eq!(for_cdata("]]>rest"), "]]]]><![CDATA[>rest");
+        assert_eq!(
+            for_cdata("]]>rest"),
+            "]]>]<![CDATA[]]>]<![CDATA[]]><![CDATA[>rest"
+        );
     }
 
     #[test]
     fn cdata_at_end() {
-        assert_eq!(for_cdata("start]]>"), "start]]]]><![CDATA[>");
+        assert_eq!(
+            for_cdata("start]]>"),
+            "start]]>]<![CDATA[]]>]<![CDATA[]]><![CDATA[>"
+        );
     }
 
     #[test]
