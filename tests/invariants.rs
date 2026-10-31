@@ -60,9 +60,9 @@ fn is_invalid_for_xml(c: char) -> bool {
         || is_noncharacter(cp)
 }
 
-/// characters restricted or invalid in xml 1.1 (encoded as `&#xHH;` or, for
-/// nul / noncharacters, replaced with space). mirrors
-/// `engine::is_xml11_restricted_or_invalid`. note NEL (U+0085) is *not* restricted.
+/// characters that cannot appear literally in xml 1.1 output (encoded as
+/// `&#xHH;` or, for nul / noncharacters, replaced with space). mirrors
+/// `engine::is_xml11_restricted_or_invalid`.
 fn is_xml11_restricted(c: char) -> bool {
     let cp = c as u32;
     cp == 0
@@ -70,8 +70,8 @@ fn is_xml11_restricted(c: char) -> bool {
         || cp == 0x0B
         || cp == 0x0C
         || (0x0E..=0x1F).contains(&cp)
-        || (0x7F..=0x84).contains(&cp)
-        || (0x86..=0x9F).contains(&cp)
+        || (0x7F..=0x9F).contains(&cp)
+        || cp == 0x2028
         || is_noncharacter(cp)
 }
 
@@ -449,7 +449,7 @@ fn safety_html_family() {
         },
     );
 
-    // xml 1.1 — restricted controls become &#xHH; (not space); NEL passes
+    // xml 1.1 — restricted controls, NEL and U+2028 become &#xHH; (not space)
     assert_markup_safe("for_xml11", for_xml11, |c| {
         matches!(c, '<' | '>' | '"' | '\'') || is_xml11_restricted(c)
     });
