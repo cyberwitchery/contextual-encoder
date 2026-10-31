@@ -904,37 +904,29 @@ fn safety_sql() {
     }
 }
 
-/// true if the cdata output cannot break out of a CDATA section: the split
-/// technique deliberately emits `]]>`, but always immediately re-opens with
-/// `<![CDATA[`. so every `]]>` must be followed by `<![CDATA[`. (the naive
-/// "output contains no `]]>`" is false — see `for_cdata("a]]>b")`.)
-fn cdata_cannot_break_out(s: &str) -> bool {
-    let bytes = s.as_bytes();
-    for (i, w) in bytes.windows(3).enumerate() {
-        if w == b"]]>" && !s[i..].starts_with("]]><![CDATA[") {
-            return false;
-        }
-    }
-    true
+/// asserts that `input`, encoded between trusted `prefix` and `suffix` in one
+/// CDATA section, reads back as `prefix`, the input and `suffix`.
+fn assert_cdata_holds_between(prefix: &str, input: &str, suffix: &str) {
+    let section = format!("<![CDATA[{prefix}{}{suffix}]]>", for_cdata(input));
+    let want = format!("{prefix}{}{suffix}", cdata_expected_value(input));
+    assert_eq!(
+        decode_cdata_fragment(&section),
+        Some(want),
+        "for_cdata: {prefix:?}+{input:?}+{suffix:?} -> {section:?}"
+    );
 }
 
 #[test]
 fn safety_cdata() {
     let mut buf = [0u8; 4];
     for c in scalars() {
-        // a lone scalar never forms `]]>`, but must not leak invalid xml chars
-        let out = for_cdata(one(c, &mut buf));
-        assert!(
-            cdata_cannot_break_out(&out),
-            "for_cdata: breakout for {c:?}: {out:?}"
-        );
-        // wrapping a scalar around a delimiter must preserve the invariant
-        for probe in [format!("]]{c}>"), format!("]]>{c}"), format!("{c}]]>")] {
-            let out = for_cdata(&probe);
-            assert!(
-                cdata_cannot_break_out(&out),
-                "for_cdata: breakout for {probe:?}: {out:?}"
-            );
+        for probe in [
+            String::from(one(c, &mut buf)),
+            format!("]]{c}>"),
+            format!("]]>{c}"),
+            format!("{c}]]>"),
+        ] {
+            assert_cdata_holds_between("]]", &probe, "]>");
         }
     }
     for input in [
@@ -947,12 +939,10 @@ fn safety_cdata() {
         "]",
         "]>",
         "<![CDATA[",
+        ">x<evil/><![CDATA[",
+        "]>x<evil/><![CDATA[",
     ] {
-        let out = for_cdata(input);
-        assert!(
-            cdata_cannot_break_out(&out),
-            "for_cdata: breakout for {input:?}: {out:?}"
-        );
+        assert_cdata_holds_between("]]", input, "]>");
     }
 }
 
@@ -1061,32 +1051,48 @@ fn cdata_output_never_ends_with_a_bracket() {
     }
 }
 
+/// asserts that `input`, encoded between trusted `prefix` and `suffix`, still
+/// forms a well-formed comment body.
+fn assert_xml_comment_holds_between(prefix: &str, input: &str, suffix: &str) {
+    let body = format!("{prefix}{}{suffix}", for_xml_comment(input));
+    assert!(
+        xml_comment_body_is_well_formed(&body),
+        "for_xml_comment: {prefix:?}+{input:?}+{suffix:?} -> {body:?}"
+    );
+}
+
 #[test]
 fn safety_xml_comment() {
     let mut buf = [0u8; 4];
-    let check = |input: &str| {
-        let out = for_xml_comment(input);
-        assert!(
-            !out.contains("--"),
-            "for_xml_comment: `--` in {out:?} for {input:?}"
-        );
-        assert!(
-            !out.ends_with('-'),
-            "for_xml_comment: trailing `-` in {out:?} for {input:?}"
-        );
+    for c in scalars() {
+        let s = one(c, &mut buf);
+        let out = for_xml_comment(s);
         assert!(
             !out.chars().any(is_invalid_for_xml),
-            "for_xml_comment: raw invalid-xml char in {out:?} for {input:?}"
+            "for_xml_comment: raw invalid-xml char in {out:?} for {c:?}"
         );
-    };
-    for c in scalars() {
-        check(one(c, &mut buf));
-        for probe in [format!("-{c}-"), format!("{c}--"), format!("--{c}")] {
-            check(&probe);
+        for probe in [
+            String::from(s),
+            format!("-{c}-"),
+            format!("{c}--"),
+            format!("--{c}"),
+        ] {
+            assert_xml_comment_holds_between("a-", &probe, "-a");
         }
     }
-    for input in ["-", "--", "---", "----", "a-", "-a", "a--b--c", "----x"] {
-        check(input);
+    for input in [
+        "-",
+        "--",
+        "---",
+        "----",
+        "a-",
+        "-a",
+        "a--b--c",
+        "----x",
+        "-><evil/>",
+        "-x",
+    ] {
+        assert_xml_comment_holds_between("a-", input, "-a");
     }
 }
 
@@ -1381,7 +1387,7 @@ fn boundary_css_escape_does_not_absorb_the_next_write() {
 fn boundary_xml_comment_cannot_form_a_double_hyphen() {
     assert_eq!(
         write_both(write_xml_comment, "value-", "-more"),
-        "value~-more"
+        "value~~more"
     );
 
     let mut buf = [0u8; 4];
@@ -1424,7 +1430,7 @@ fn for_write_display_parity() {
         }
     }
     // multi-char inputs exercise lookahead-dependent paths (css separators,
-    // template `${`, cdata splits, xml comment hyphens)
+    // template `${`)
     for input in [
         "",
         "<script>alert('xss')</script>",
