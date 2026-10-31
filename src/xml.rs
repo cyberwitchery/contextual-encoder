@@ -250,7 +250,8 @@ const XML11_ATTRIBUTE: MarkupConfig = MarkupConfig {
 /// references instead of replacing them with space. NUL (U+0000) and unicode
 /// non-characters are still replaced with space (they are invalid in XML 1.1).
 ///
-/// NEL (U+0085) is **not** restricted in XML 1.1 and passes through unchanged.
+/// NEL (U+0085) and line separator (U+2028) are encoded as `&#x85;` and
+/// `&#x2028;`, since an XML 1.1 parser normalizes them to a line feed.
 ///
 /// # examples
 ///
@@ -260,8 +261,7 @@ const XML11_ATTRIBUTE: MarkupConfig = MarkupConfig {
 /// assert_eq!(for_xml11("<b>"), "&lt;b&gt;");
 /// // control chars get character references instead of space
 /// assert_eq!(for_xml11("a\x01b"), "a&#x1;b");
-/// // NEL passes through in XML 1.1
-/// assert_eq!(for_xml11("a\u{0085}b"), "a\u{0085}b");
+/// assert_eq!(for_xml11("a\u{0085}b\u{2028}c"), "a&#x85;b&#x2028;c");
 /// ```
 pub fn for_xml11(input: &str) -> String {
     let mut out = String::with_capacity(input.len());

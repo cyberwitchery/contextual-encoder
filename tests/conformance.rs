@@ -1172,9 +1172,11 @@ mod xml {
     }
 
     #[test]
-    fn xml11_nel_passes_through() {
-        // NEL (U+0085) is NOT restricted in XML 1.1
-        assert_eq!(for_xml11("a\u{0085}b"), "a\u{0085}b");
+    fn xml11_nel_and_line_separator_as_references() {
+        for encode in [for_xml11, for_xml11_content, for_xml11_attribute] {
+            assert_eq!(encode("a\u{0085}b"), "a&#x85;b");
+            assert_eq!(encode("a\u{2028}b\u{2029}c"), "a&#x2028;b\u{2029}c");
+        }
     }
 
     #[test]

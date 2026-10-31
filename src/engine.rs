@@ -65,14 +65,13 @@ pub(crate) fn is_invalid_for_xml(c: char) -> bool {
         || is_unicode_noncharacter(cp)
 }
 
-/// returns true if the character is restricted or invalid in XML 1.1 output.
+/// returns true if the character cannot be written literally in XML 1.1 output.
 ///
-/// unlike [`is_invalid_for_xml`], the C1 controls are split: NEL (U+0085) is
-/// **not** restricted in XML 1.1 and passes through unchanged, while the rest
-/// of the range is. covers:
+/// covers:
 /// - NUL (U+0000) — invalid (not in the Char production)
 /// - U+0001-U+0008, U+000B-U+000C, U+000E-U+001F (restricted C0 controls)
-/// - U+007F-U+0084, U+0086-U+009F (DEL and restricted C1 controls, except NEL)
+/// - U+007F-U+009F (DEL and the C1 controls; NEL is normalized to a line feed)
+/// - U+2028 (line separator, also normalized to a line feed)
 /// - unicode non-characters
 pub(crate) fn is_xml11_restricted_or_invalid(c: char) -> bool {
     let cp = c as u32;
@@ -81,8 +80,8 @@ pub(crate) fn is_xml11_restricted_or_invalid(c: char) -> bool {
         || cp == 0x0B
         || cp == 0x0C
         || (0x0E..=0x1F).contains(&cp)
-        || (0x7F..=0x84).contains(&cp)
-        || (0x86..=0x9F).contains(&cp)
+        || (0x7F..=0x9F).contains(&cp)
+        || cp == 0x2028
         || is_unicode_noncharacter(cp)
 }
 
@@ -94,7 +93,7 @@ pub(crate) enum InvalidCharPolicy {
     /// HTML / XML 1.0: every invalid character becomes a single space.
     HtmlSpace,
     /// XML 1.1: NUL and non-characters become a space; the restricted C0/C1
-    /// controls become `&#xHH;` hex character references.
+    /// controls, NEL and U+2028 become hex character references.
     Xml11Reference,
 }
 

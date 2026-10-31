@@ -207,9 +207,9 @@ pub fn write_html_attribute<W: fmt::Write>(out: &mut W, input: &str) -> fmt::Res
 /// | `=`    | `&#61;`   |
 /// | `` ` ``| `&#96;`   |
 ///
-/// C0/C1 control characters, DEL, and unicode non-characters are replaced
-/// with `-`. NEL (U+0085) is encoded as `&#133;`. line separator (U+2028)
-/// and paragraph separator (U+2029) are encoded as `&#8232;` and `&#8233;`.
+/// C0/C1 control characters (NEL included), DEL, and unicode non-characters
+/// are replaced with `-`. line separator (U+2028) and paragraph separator
+/// (U+2029) are encoded as `&#8232;` and `&#8233;`.
 ///
 /// # examples
 ///
@@ -295,7 +295,6 @@ fn write_html_unquoted_attribute_encoded<W: fmt::Write>(
         '/' => out.write_str("&#47;"),
         '=' => out.write_str("&#61;"),
         '`' => out.write_str("&#96;"),
-        '\u{0085}' => out.write_str("&#133;"),
         '\u{2028}' => out.write_str("&#8232;"),
         '\u{2029}' => out.write_str("&#8233;"),
         // remaining: C0/C1 controls, DEL, non-characters → dash
@@ -323,11 +322,7 @@ mod tests {
     fn unquoted_attr_replaces_controls_with_dash() {
         assert_eq!(for_html_unquoted_attribute("a\x01b"), "a-b");
         assert_eq!(for_html_unquoted_attribute("a\x7Fb"), "a-b");
-    }
-
-    #[test]
-    fn unquoted_attr_encodes_nel() {
-        assert_eq!(for_html_unquoted_attribute("a\u{0085}b"), "a&#133;b");
+        assert_eq!(for_html_unquoted_attribute("a\u{0085}b"), "a-b");
     }
 
     #[test]

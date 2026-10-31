@@ -1,5 +1,10 @@
 # changelog
 
+## Unreleased
+
+- **breaking:** `for_html_unquoted_attribute` now replaces NEL (U+0085) with `-`, like the other C1 controls. the `&#133;` it emitted decodes as U+2026 (`…`) in an HTML5 parser, not as NEL
+- **breaking:** the XML 1.1 encoders (`for_xml11`, `for_xml11_content`, `for_xml11_attribute`) now encode NEL (U+0085) as `&#x85;` and line separator (U+2028) as `&#x2028;`. emitted raw, an XML 1.1 parser normalized both to a line feed
+
 ## [0.10.0] - 2026-09-06
 
 - the SQL security notes no longer name dynamic identifiers as a use case for the string literal encoders. `for_sql` and `for_sql_backslash` escape `'`, not the `"` or `` ` `` that delimits a table or column name, so an untrusted identifier must be validated against a whitelist; the README's list of dangerous contexts now says so too

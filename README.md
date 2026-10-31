@@ -67,7 +67,7 @@ see [examples](#examples) for the other contexts, or run
 
 | function | safe for | notes |
 |----------|----------|-------|
-| `for_xml11` | XML 1.1 content + quoted attributes | restricted chars → `&#xHH;` |
+| `for_xml11` | XML 1.1 content + quoted attributes | restricted chars, NEL and U+2028 → hex character references |
 | `for_xml11_content` | XML 1.1 content only | does not encode quotes |
 | `for_xml11_attribute` | quoted XML 1.1 attributes | does not encode `>` |
 
@@ -243,8 +243,8 @@ the OWASP Java Encoder. the Rust literal encoders are additions
 specific to this crate.
 
 ### exact matches
-- encoding rules for `for_html`, `for_html_content`, `for_html_attribute`,
-  `for_html_unquoted_attribute`
+- encoding rules for `for_html`, `for_html_content`, `for_html_attribute`
+  (apart from NEL, below), `for_html_unquoted_attribute`
 - JavaScript encoding rules across all four contexts
 - CSS hex escape format with trailing space separator (including C1 controls)
 - URI component percent-encoding of UTF-8 bytes
@@ -255,6 +255,9 @@ specific to this crate.
   which the Java encoder replaces with space or dash. Rust `str` is guaranteed
   valid UTF-8, so surrogates cannot appear. supplementary plane characters
   (U+10000+) are valid and pass through or are encoded normally.
+- **NEL (U+0085) in `for_html`, `for_html_content`, `for_html_attribute` and
+  their XML 1.0 aliases** is replaced with a space, like the other C1
+  controls. the Java encoder passes it through unchanged in these contexts.
 - **`for_html` uses `&#34;` and `&#39;`** for quote encoding rather than
   `&quot;` — both are valid HTML and the numeric form is shorter.
 - **`-` (hyphen) in JavaScript:** the Java encoder may escape `-` as `\-` in
