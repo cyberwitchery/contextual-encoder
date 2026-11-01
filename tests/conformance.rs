@@ -378,6 +378,14 @@ mod js_template {
     }
 
     #[test]
+    fn leading_brace_escaped() {
+        assert_eq!(for_js_template("{alert(1)}"), r"\x7balert(1)}");
+        assert_eq!(for_js_template("{"), r"\x7b");
+        assert_eq!(for_js_template("{{"), r"\x7b{");
+        assert_eq!(for_js_template("a{b}"), "a{b}");
+    }
+
+    #[test]
     fn nested_interpolation() {
         // ${${...}} — both $ should be escaped
         assert_eq!(for_js_template("${${x}}"), r"\${\${x}}");

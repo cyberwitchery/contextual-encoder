@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **breaking:** `for_js_template` now escapes a leading `{` as `\x7b`. emitted raw after trusted template text ending in `$`, it opened an interpolation
 - **breaking:** `for_html_unquoted_attribute` now replaces NEL (U+0085) with `-`, like the other C1 controls. the `&#133;` it emitted decodes as U+2026 (`…`) in an HTML5 parser, not as NEL
 - **breaking:** the XML 1.1 encoders (`for_xml11`, `for_xml11_content`, `for_xml11_attribute`) now encode NEL (U+0085) as `&#x85;` and line separator (U+2028) as `&#x2028;`. emitted raw, an XML 1.1 parser normalized both to a line feed
 

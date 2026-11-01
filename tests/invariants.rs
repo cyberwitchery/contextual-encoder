@@ -1302,7 +1302,7 @@ fn write_both(write_fn: WriteFn, head: &str, tail: &str) -> String {
 #[test]
 fn boundary_js_template_cannot_reopen_interpolation() {
     let sink = write_both(write_js_template, "price: $", "{alert(1)}");
-    assert_eq!(sink, r"price: \${alert(1)}");
+    assert_eq!(sink, r"price: \$\x7balert(1)}");
     assert_eq!(js_unescape(&sink), "price: ${alert(1)}");
 
     let mut buf = [0u8; 4];
@@ -1311,6 +1311,19 @@ fn boundary_js_template_cannot_reopen_interpolation() {
         assert!(
             !template_opens_interpolation(&sink),
             "js_template: interpolation opened across the boundary for {c:?} -> {sink:?}"
+        );
+    }
+}
+
+#[test]
+fn boundary_js_template_trusted_dollar_cannot_open_interpolation() {
+    let mut buf = [0u8; 4];
+    for c in scalars() {
+        let mut sink = String::from("price: $");
+        write_js_template(&mut sink, one(c, &mut buf)).unwrap();
+        assert!(
+            !template_opens_interpolation(&sink),
+            "js_template: interpolation opened after a trusted `$` for {c:?} -> {sink:?}"
         );
     }
 }

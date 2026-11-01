@@ -79,7 +79,7 @@ see [examples](#examples) for the other contexts, or run
 | `for_javascript_attribute` | HTML event attributes | does not escape `<` or `/` |
 | `for_javascript_block` | `<script>` blocks | uses backslash quote escapes |
 | `for_javascript_source` | standalone .js files | minimal encoding; not valid JSON — use `for_json` |
-| `for_js_template` | ES6 template literal content | escapes `` ` ``, `${`, and a trailing `$` |
+| `for_js_template` | ES6 template literal content | escapes `` ` ``, `${`, a trailing `$`, and a leading `{` |
 
 the `<script>`-block encoders (`for_javascript`, `for_javascript_block`,
 `for_js_template`) escape `<` as `\x3c` as well as `/` as `\/`. escaping `/`

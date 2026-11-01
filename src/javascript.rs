@@ -230,6 +230,8 @@ pub fn write_javascript_source<W: fmt::Write>(out: &mut W, input: &str) -> fmt::
 /// - `` ` `` → `` \` `` (prevents breaking out of the template literal)
 /// - `$` followed by `{`, and `$` at the end of the input → `\$` (prevents
 ///   expression interpolation, including a `${` the caller completes)
+/// - `{` at the start of the input → `\x7b` (prevents a `$` the caller wrote
+///   just before the value from opening an interpolation)
 /// - `\` → `\\`
 /// - `<` → `\x3c`, `/` → `\/` (keeps the HTML tokenizer in script data state,
 ///   so the enclosing `</script>` still closes the block)
@@ -257,6 +259,8 @@ pub fn write_javascript_source<W: fmt::Write>(out: &mut W, input: &str) -> fmt::
 /// assert_eq!(for_js_template("a $ b"), "a $ b");
 /// // `\$` is `$` in a template literal, so the decoded value is unchanged
 /// assert_eq!(for_js_template("cost: $"), r"cost: \$");
+/// assert_eq!(for_js_template("{7*6}"), r"\x7b7*6}");
+/// assert_eq!(for_js_template("a{b}"), "a{b}");
 /// ```
 pub fn for_js_template(input: &str) -> String {
     let mut out = String::with_capacity(input.len());
@@ -268,9 +272,16 @@ pub fn for_js_template(input: &str) -> String {
 ///
 /// see [`for_js_template`] for encoding rules.
 pub fn write_js_template<W: fmt::Write>(out: &mut W, input: &str) -> fmt::Result {
+    let rest = match input.strip_prefix('{') {
+        Some(rest) => {
+            out.write_str("\\x7b")?;
+            rest
+        }
+        None => input,
+    };
     encode_loop(
         out,
-        input,
+        rest,
         needs_js_template_encoding,
         write_js_template_encoded,
     )
