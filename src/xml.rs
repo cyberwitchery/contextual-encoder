@@ -24,8 +24,9 @@
 //! - `for_xml_comment` is **not safe for HTML comments**. HTML comments have
 //!   vendor-specific extensions (e.g., `<!--[if IE]>`) that make safe encoding
 //!   impractical. this encoder is for XML comments only.
-//! - `for_cdata` splits CDATA sections to prevent premature closing. the
-//!   caller is responsible for wrapping the output in `<![CDATA[...]]>`.
+//! - `for_cdata` splits the CDATA section at every `]` and `>`, so its output
+//!   can be up to 13 times longer than the input. the caller is responsible
+//!   for wrapping the output in `<![CDATA[...]]>`.
 
 use std::fmt;
 
@@ -103,10 +104,9 @@ pub fn write_xml_attribute<W: fmt::Write>(out: &mut W, input: &str) -> fmt::Resu
 
 /// encodes `input` for safe embedding in an XML comment (`<!-- ... -->`).
 ///
-/// the XML specification forbids `--` inside comments and a trailing `-`
-/// (which would form `--->` with the closing delimiter). this encoder
-/// replaces the second hyphen in any `--` sequence with `~`, and replaces
-/// a trailing `-` with `~`.
+/// the XML specification forbids `--` inside comments and a `-` right before
+/// the closing `-->`. this encoder replaces every `-` with `~`, so the output
+/// cannot form either with the text around it.
 ///
 /// invalid XML characters are replaced with a space.
 ///
@@ -122,7 +122,7 @@ pub fn write_xml_attribute<W: fmt::Write>(out: &mut W, input: &str) -> fmt::Resu
 /// use contextual_encoder::for_xml_comment;
 ///
 /// assert_eq!(for_xml_comment("safe text"), "safe text");
-/// assert_eq!(for_xml_comment("a--b"), "a-~b");
+/// assert_eq!(for_xml_comment("a--b"), "a~~b");
 /// assert_eq!(for_xml_comment("trailing-"), "trailing~");
 /// ```
 pub fn for_xml_comment(input: &str) -> String {
@@ -135,38 +135,22 @@ pub fn for_xml_comment(input: &str) -> String {
 ///
 /// see [`for_xml_comment`] for encoding rules.
 pub fn write_xml_comment<W: fmt::Write>(out: &mut W, input: &str) -> fmt::Result {
-    let mut last_was_hyphen = false;
     encode_loop(
         out,
         input,
         |c| c == '-' || is_invalid_for_xml(c),
-        |out, c, next| {
-            if c != '-' {
-                last_was_hyphen = false;
-                out.write_char(' ')
-            } else if last_was_hyphen {
-                last_was_hyphen = false;
-                out.write_char('~')
-            } else if next.is_none() {
-                out.write_char('~')
-            } else {
-                last_was_hyphen = next == Some('-');
-                out.write_char('-')
-            }
-        },
+        |out, c, _| out.write_char(if c == '-' { '~' } else { ' ' }),
     )
 }
 
 /// encodes `input` for safe embedding in an XML CDATA section.
 ///
-/// the CDATA closing delimiter `]]>` cannot appear in CDATA content. when
-/// this sequence is found, the encoder splits it by closing the current
-/// CDATA section and immediately opening a new one:
+/// the CDATA closing delimiter `]]>` cannot appear in CDATA content. the
+/// encoder closes the current CDATA section at every `]` and `>` and opens a
+/// new one, so the output cannot complete a `]]>` with the text around it:
 ///
-/// `]]>` → `]]]]><![CDATA[>`
-///
-/// a `]` that ends the input is split the same way, so no text written after
-/// the output can complete a delimiter.
+/// - `]` → `]]>]<![CDATA[`
+/// - `>` → `]]><![CDATA[>`
 ///
 /// the caller is responsible for wrapping the output in `<![CDATA[...]]>`.
 ///
@@ -178,10 +162,8 @@ pub fn write_xml_comment<W: fmt::Write>(out: &mut W, input: &str) -> fmt::Result
 /// use contextual_encoder::for_cdata;
 ///
 /// assert_eq!(for_cdata("safe text"), "safe text");
-/// assert_eq!(for_cdata("a]]>b"), "a]]]]><![CDATA[>b");
-/// // wrapped, this is still `<![CDATA[a]]]]><![CDATA[]]>`, which decodes to `a]]`
-/// assert_eq!(for_cdata("a]]"), "a]]]]><![CDATA[");
-/// assert_eq!(for_cdata("a]b"), "a]b");
+/// assert_eq!(for_cdata("a]b"), "a]]>]<![CDATA[b");
+/// assert_eq!(for_cdata("a>b"), "a]]><![CDATA[>b");
 /// ```
 pub fn for_cdata(input: &str) -> String {
     let mut out = String::with_capacity(input.len());
@@ -193,34 +175,14 @@ pub fn for_cdata(input: &str) -> String {
 ///
 /// see [`for_cdata`] for encoding rules.
 pub fn write_cdata<W: fmt::Write>(out: &mut W, input: &str) -> fmt::Result {
-    let mut bracket_count: u32 = 0;
     encode_loop(
         out,
         input,
         |c| c == ']' || c == '>' || is_invalid_for_xml(c),
-        |out, c, next| {
-            if c == ']' {
-                if next.is_none() {
-                    // the input's own `]`, then a split
-                    return out.write_str("]]]><![CDATA[");
-                }
-                bracket_count += 1;
-                if next != Some(']') && next != Some('>') {
-                    bracket_count = 0;
-                }
-                out.write_char(']')
-            } else if c == '>' {
-                let split = bracket_count >= 2;
-                bracket_count = 0;
-                if split {
-                    out.write_str("]]><![CDATA[>")
-                } else {
-                    out.write_char('>')
-                }
-            } else {
-                bracket_count = 0;
-                out.write_char(' ')
-            }
+        |out, c, _| match c {
+            ']' => out.write_str("]]>]<![CDATA["),
+            '>' => out.write_str("]]><![CDATA[>"),
+            _ => out.write_char(' '),
         },
     )
 }
@@ -332,14 +294,6 @@ pub fn write_xml11_attribute<W: fmt::Write>(out: &mut W, input: &str) -> fmt::Re
 mod tests {
     use super::*;
 
-    // -- XML comment --
-
-    #[test]
-    fn comment_hyphen_not_paired_across_run() {
-        assert_eq!(for_xml_comment("-a-b"), "-a-b");
-        assert_eq!(for_xml_comment("a-b-c"), "a-b-c");
-    }
-
     // -- CDATA --
 
     #[test]
@@ -347,17 +301,11 @@ mod tests {
         let mut out = String::new();
         write_cdata(&mut out, "a]]").unwrap();
         write_cdata(&mut out, ">b").unwrap();
-        assert_eq!(out, "a]]]]><![CDATA[>b");
+        assert_eq!(out, "a]]>]<![CDATA[]]>]<![CDATA[]]><![CDATA[>b");
 
         let mut out = String::new();
         write_cdata(&mut out, "a]").unwrap();
         write_cdata(&mut out, "]>b").unwrap();
-        assert_eq!(out, "a]]]><![CDATA[]>b");
-    }
-
-    #[test]
-    fn cdata_bracket_run_reset_before_gt() {
-        assert_eq!(for_cdata("]]a>"), "]]a>");
-        assert_eq!(for_cdata("]] >"), "]] >");
+        assert_eq!(out, "a]]>]<![CDATA[]]>]<![CDATA[]]><![CDATA[>b");
     }
 }

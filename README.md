@@ -60,8 +60,8 @@ see [examples](#examples) for the other contexts, or run
 | `for_xml` | XML content + quoted attributes | alias for `for_html` |
 | `for_xml_content` | XML content only | alias for `for_html_content` |
 | `for_xml_attribute` | quoted XML attributes | alias for `for_html_attribute` |
-| `for_xml_comment` | XML comment content | `--` → `-~`, trailing `-` → `~` |
-| `for_cdata` | CDATA section content | splits `]]>`, and a trailing `]`, to prevent premature close |
+| `for_xml_comment` | XML comment content | every `-` → `~` |
+| `for_cdata` | CDATA section content | splits the section at every `]` and `>` (up to 13× longer) |
 
 ### XML 1.1
 
@@ -243,8 +243,9 @@ the OWASP Java Encoder. the Rust literal encoders are additions
 specific to this crate.
 
 ### exact matches
-- encoding rules for `for_html`, `for_html_content`, `for_html_attribute`
-  (apart from NEL, below), `for_html_unquoted_attribute`
+- encoding rules for `for_html`, `for_html_content`, `for_html_attribute`,
+  `for_xml_comment`, `for_cdata` (apart from NEL, below),
+  `for_html_unquoted_attribute`
 - JavaScript encoding rules across all four contexts
 - CSS hex escape format with trailing space separator (including C1 controls)
 - URI component percent-encoding of UTF-8 bytes
@@ -255,9 +256,10 @@ specific to this crate.
   which the Java encoder replaces with space or dash. Rust `str` is guaranteed
   valid UTF-8, so surrogates cannot appear. supplementary plane characters
   (U+10000+) are valid and pass through or are encoded normally.
-- **NEL (U+0085) in `for_html`, `for_html_content`, `for_html_attribute` and
-  their XML 1.0 aliases** is replaced with a space, like the other C1
-  controls. the Java encoder passes it through unchanged in these contexts.
+- **NEL (U+0085) in `for_html`, `for_html_content`, `for_html_attribute`,
+  their XML 1.0 aliases, `for_xml_comment` and `for_cdata`** is replaced with
+  a space, like the other C1 controls. the Java encoder passes it through
+  unchanged in these contexts.
 - **`for_html` uses `&#34;` and `&#39;`** for quote encoding rather than
   `&quot;` — both are valid HTML and the numeric form is shorter.
 - **`-` (hyphen) in JavaScript:** the Java encoder may escape `-` as `\-` in
