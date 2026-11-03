@@ -1,6 +1,6 @@
 # changelog
 
-## Unreleased
+## [0.11.0] - 2026-11-03
 
 - **breaking:** `for_js_template` now escapes a leading `{` as `\x7b`. emitted raw after trusted template text ending in `$`, it opened an interpolation
 - **breaking:** `for_html_unquoted_attribute` now replaces NEL (U+0085) with `-`, like the other C1 controls. the `&#133;` it emitted decodes as U+2026 (`…`) in an HTML5 parser, not as NEL
