@@ -14,7 +14,7 @@ contextual-encoder = { path = ".." }
 [dev-dependencies]
 boa_engine = "0.22.0"
 cssparser = "0.38.0"
-html5ever = "0.40.1"
+html5ever = "0.39.0"
 markup5ever_rcdom = "0.39.0"
 quick-xml = "0.42.0"
 serde_json = "1.0.150"

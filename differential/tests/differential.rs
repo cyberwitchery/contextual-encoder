@@ -448,7 +448,7 @@ fn html_rcdata_and_rawtext_no_breakout() {
 
 #[test]
 fn css_string_stays_one_token() {
-    use cssparser::{Parser, ParserInput, Token};
+    use cssparser::{Parser, Token};
     for s in inputs(0xCCCC_0001, 25_000) {
         for (label, enc) in [
             ("for_css_string", for_css_string(&s)),
@@ -456,8 +456,7 @@ fn css_string_stays_one_token() {
         ] {
             for quote in ['"', '\''] {
                 let css = format!("{quote}{enc}{quote}");
-                let mut pi = ParserInput::new(&css);
-                let mut p = Parser::new(&mut pi);
+                let mut p = Parser::new(&css);
                 let is_string = matches!(p.next(), Ok(Token::QuotedString(_)));
                 assert!(
                     is_string,
@@ -526,10 +525,10 @@ fn xml_content_and_attribute_no_breakout() {
             match reader.read_event() {
                 Ok(Event::Eof) => break,
                 Ok(Event::Start(e)) => {
-                    starts.push(String::from_utf8_lossy(e.name().as_ref()).to_string());
+                    starts.push(e.name().as_ref().to_string());
                     for a in e.attributes() {
                         let a = a.expect("attr");
-                        if a.key.as_ref() == b"a" {
+                        if a.key.as_ref() == "a" {
                             attr_val = a
                                 .normalized_value(quick_xml::XmlVersion::Implicit1_0)
                                 .expect("normalize attr")
@@ -537,13 +536,12 @@ fn xml_content_and_attribute_no_breakout() {
                         }
                     }
                 }
-                Ok(Event::Text(t)) => text.push_str(&t.decode().expect("decode")),
+                Ok(Event::Text(t)) => text.push_str(&t),
                 Ok(Event::GeneralRef(r)) => {
                     if let Some(c) = r.resolve_char_ref().expect("char ref") {
                         text.push(c);
                     } else {
-                        let name = r.decode().expect("ref decode");
-                        text.push(match &*name {
+                        text.push(match r.as_ref() {
                             "lt" => '<',
                             "gt" => '>',
                             "amp" => '&',
@@ -553,7 +551,7 @@ fn xml_content_and_attribute_no_breakout() {
                         });
                     }
                 }
-                Ok(Event::End(e)) if e.name().as_ref() == b"r" => {}
+                Ok(Event::End(e)) if e.name().as_ref() == "r" => {}
                 Ok(event) => panic!(
                     "unexpected xml event {event:?}: input={} doc={}",
                     show(&s),
@@ -597,14 +595,12 @@ fn xml_cdata_no_breakout() {
         loop {
             match reader.read_event() {
                 Ok(Event::Eof) => break,
-                Ok(Event::Start(e)) => {
-                    starts.push(String::from_utf8_lossy(e.name().as_ref()).to_string())
+                Ok(Event::Start(e)) => starts.push(e.name().as_ref().to_string()),
+                Ok(Event::CData(c)) => text.push_str(&c),
+                Ok(Event::Text(t)) => {
+                    text.push_str(&quick_xml::escape::unescape(&t).expect("unescape"))
                 }
-                Ok(Event::CData(c)) => text.push_str(&String::from_utf8_lossy(&c)),
-                Ok(Event::Text(t)) => text.push_str(
-                    &quick_xml::escape::unescape(&t.decode().expect("decode")).expect("unescape"),
-                ),
-                Ok(Event::End(e)) if e.name().as_ref() == b"r" => {}
+                Ok(Event::End(e)) if e.name().as_ref() == "r" => {}
                 Ok(event) => panic!(
                     "unexpected cdata event {event:?}: input={} doc={}",
                     show(&s),
@@ -648,12 +644,10 @@ fn xml_comment_no_breakout() {
         loop {
             match reader.read_event() {
                 Ok(Event::Eof) => break,
-                Ok(Event::Start(e)) => {
-                    starts.push(String::from_utf8_lossy(e.name().as_ref()).to_string())
-                }
+                Ok(Event::Start(e)) => starts.push(e.name().as_ref().to_string()),
                 Ok(Event::Comment(_)) => comments += 1,
-                Ok(Event::Text(t)) => stray_text.push_str(&t.decode().expect("decode")),
-                Ok(Event::End(e)) if e.name().as_ref() == b"r" => {}
+                Ok(Event::Text(t)) => stray_text.push_str(&t),
+                Ok(Event::End(e)) if e.name().as_ref() == "r" => {}
                 Ok(event) => panic!(
                     "unexpected comment event {event:?}: input={} doc={}",
                     show(&s),
