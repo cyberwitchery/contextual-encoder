@@ -267,6 +267,19 @@ specific to this crate.
   encode `-` in JavaScript. the `-->` sequence inside a JS string literal is
   harmless because the HTML parser does not scan string literal contents.
 
+## differential testing
+
+the [differential harness](https://github.com/cyberwitchery/contextual-encoder/tree/main/differential)
+tests encoded output with independent parsers using fixed adversarial inputs and
+seeded random inputs. run it from a repository checkout:
+
+```sh
+cargo test --manifest-path differential/Cargo.toml --release --locked
+```
+
+the harness is a separate, unpublished package. its parser dependencies are
+isolated from this crate. see its readme for coverage and limitations.
+
 ## license
 
 MIT

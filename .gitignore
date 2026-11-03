@@ -1,5 +1,7 @@
 /target
+/differential/target/
 Cargo.lock
+!/differential/Cargo.lock
 *.profraw
 *.profdata
 lcov.info

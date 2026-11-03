@@ -1,0 +1,20 @@
+# parser dependencies stay outside the published crate's workspace.
+[workspace]
+
+[package]
+name = "contextual-encoder-differential"
+version = "0.0.0"
+edition = "2021"
+license = "MIT"
+publish = false
+
+[dependencies]
+contextual-encoder = { path = ".." }
+
+[dev-dependencies]
+boa_engine = "0.21.1"
+cssparser = "0.37.0"
+html5ever = "0.39.0"
+markup5ever_rcdom = "0.39.0"
+quick-xml = "0.40.1"
+serde_json = "1.0.150"

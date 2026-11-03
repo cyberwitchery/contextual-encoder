@@ -72,6 +72,23 @@ jobs:
           cache-key-prefix: kache-doc
       - run: cargo doc --no-deps
 
+  differential:
+    name: differential
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
+        with:
+          toolchain: stable
+          components: rustfmt, clippy
+      - uses: kunobi-ninja/kache-action@ad7317540dcdd71c904f7a60a87b620a0c0e67ed # v1
+        with:
+          cache-key-prefix: kache-differential
+      - run: cargo fmt --manifest-path differential/Cargo.toml --check
+      - run: cargo clippy --manifest-path differential/Cargo.toml --release --locked --all-targets -- -D warnings
+      - run: cargo test --manifest-path differential/Cargo.toml --release --locked
+
   deny:
     name: deny
     runs-on: ubuntu-latest
@@ -119,7 +136,7 @@ jobs:
 
   success:
     name: success
-    needs: [fmt, clippy, test, doc, deny, coverage, unsafe-budget, sbom]
+    needs: [fmt, clippy, test, doc, differential, deny, coverage, unsafe-budget, sbom]
     runs-on: ubuntu-latest
     if: always()
     steps:
