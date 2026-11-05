@@ -168,6 +168,9 @@
 //! assert!(safe.contains("&lt;script&gt;"));
 //! ```
 
+#[macro_use]
+mod encoders;
+
 pub mod css;
 pub mod display;
 pub mod html;
@@ -220,36 +223,17 @@ pub use xml::{
 mod tests {
     use super::*;
 
+    macro_rules! assert_empty {
+        (
+            $($context:ident: $module:ident::{$for_fn:ident, $write_fn:ident, $display_fn:ident},)*
+        ) => {
+            $(assert_eq!($for_fn(""), "", stringify!($for_fn));)*
+        };
+    }
+
     #[test]
     fn empty_string_returns_empty() {
-        assert_eq!(for_html(""), "");
-        assert_eq!(for_html_content(""), "");
-        assert_eq!(for_html_attribute(""), "");
-        assert_eq!(for_html_unquoted_attribute(""), "");
-        assert_eq!(for_javascript(""), "");
-        assert_eq!(for_javascript_attribute(""), "");
-        assert_eq!(for_javascript_block(""), "");
-        assert_eq!(for_javascript_source(""), "");
-        assert_eq!(for_css_string(""), "");
-        assert_eq!(for_css_url(""), "");
-        assert_eq!(for_uri_component(""), "");
-        assert_eq!(for_uri_path(""), "");
-        assert_eq!(for_xml(""), "");
-        assert_eq!(for_xml_content(""), "");
-        assert_eq!(for_xml_attribute(""), "");
-        assert_eq!(for_xml_comment(""), "");
-        assert_eq!(for_cdata(""), "");
-        assert_eq!(for_xml11(""), "");
-        assert_eq!(for_xml11_content(""), "");
-        assert_eq!(for_xml11_attribute(""), "");
-        assert_eq!(for_json(""), "");
-        assert_eq!(for_rust_string(""), "");
-        assert_eq!(for_rust_char(""), "");
-        assert_eq!(for_rust_byte_string(""), "");
-        assert_eq!(for_js_template(""), "");
-        assert_eq!(for_sql(""), "");
-        assert_eq!(for_sql_backslash(""), "");
-        assert_eq!(for_form_urlencoded(""), "");
+        encoders!(assert_empty);
     }
 
     #[test]
