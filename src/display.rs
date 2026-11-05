@@ -102,6 +102,15 @@ mod tests {
         ) => {$(
             #[test]
             fn $context() {
+                assert_eq!(
+                    [stringify!($for_fn), stringify!($write_fn), stringify!($display_fn)],
+                    [
+                        concat!("for_", stringify!($context)),
+                        concat!("write_", stringify!($context)),
+                        concat!("display_", stringify!($context)),
+                    ],
+                    "a list entry must name the for_/write_/display_ fns of its own context",
+                );
                 for input in [
                     "",
                     "hello",

@@ -1133,22 +1133,35 @@ encoders!(registry);
 
 #[test]
 fn encoder_list_matches_the_public_encoders() {
+    let src = std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/src"));
     let mut declared = std::collections::BTreeSet::new();
-    for file in std::fs::read_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/src")).unwrap() {
-        let path = file.unwrap().path();
-        let module = path.file_stem().unwrap().to_str().unwrap().to_owned();
-        for line in std::fs::read_to_string(path).unwrap().lines() {
-            let Some(name) = line
-                .strip_prefix("pub fn ")
-                .and_then(|l| l.split(['(', '<']).next())
-            else {
+    let mut dirs = vec![src.to_path_buf()];
+    while let Some(dir) = dirs.pop() {
+        for file in std::fs::read_dir(dir).unwrap() {
+            let path = file.unwrap().path();
+            if path.is_dir() {
+                dirs.push(path);
                 continue;
-            };
-            // the checked variant returns `Option` and has no write_/display_ form.
-            if (name.starts_with("for_") || name.starts_with("write_"))
-                && name != "for_rust_char_checked"
-            {
-                declared.insert(format!("{module}::{name}"));
+            }
+            let rel = path.strip_prefix(src).unwrap().with_extension("");
+            let mut module: Vec<_> = rel.iter().map(|c| c.to_str().unwrap()).collect();
+            if module.last() == Some(&"mod") {
+                module.pop();
+            }
+            let module = module.join("::");
+            for line in std::fs::read_to_string(&path).unwrap().lines() {
+                let Some(name) = line
+                    .strip_prefix("pub fn ")
+                    .and_then(|l| l.split(['(', '<']).next())
+                else {
+                    continue;
+                };
+                // the checked variant returns `Option` and has no write_/display_ form.
+                if (name.starts_with("for_") || name.starts_with("write_"))
+                    && name != "for_rust_char_checked"
+                {
+                    declared.insert(format!("{module}::{name}"));
+                }
             }
         }
     }
