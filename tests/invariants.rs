@@ -1100,43 +1100,7 @@ fn safety_xml_comment() {
 // (C) universal invariants for every for_* encoder
 // ===========================================================================
 
-/// a `display_*` wrapper rendered to a `String`, for parity comparison.
-macro_rules! disp_wrapper {
-    ($name:ident, $disp:ident) => {
-        fn $name(input: &str) -> String {
-            format!("{}", $disp(input))
-        }
-    };
-}
-
-disp_wrapper!(d_html, display_html);
-disp_wrapper!(d_html_content, display_html_content);
-disp_wrapper!(d_html_attribute, display_html_attribute);
-disp_wrapper!(d_html_unquoted_attribute, display_html_unquoted_attribute);
-disp_wrapper!(d_xml, display_xml);
-disp_wrapper!(d_xml_content, display_xml_content);
-disp_wrapper!(d_xml_attribute, display_xml_attribute);
-disp_wrapper!(d_xml_comment, display_xml_comment);
-disp_wrapper!(d_cdata, display_cdata);
-disp_wrapper!(d_xml11, display_xml11);
-disp_wrapper!(d_xml11_content, display_xml11_content);
-disp_wrapper!(d_xml11_attribute, display_xml11_attribute);
-disp_wrapper!(d_javascript, display_javascript);
-disp_wrapper!(d_javascript_attribute, display_javascript_attribute);
-disp_wrapper!(d_javascript_block, display_javascript_block);
-disp_wrapper!(d_javascript_source, display_javascript_source);
-disp_wrapper!(d_js_template, display_js_template);
-disp_wrapper!(d_css_string, display_css_string);
-disp_wrapper!(d_css_url, display_css_url);
-disp_wrapper!(d_uri_component, display_uri_component);
-disp_wrapper!(d_uri_path, display_uri_path);
-disp_wrapper!(d_form_urlencoded, display_form_urlencoded);
-disp_wrapper!(d_json, display_json);
-disp_wrapper!(d_rust_string, display_rust_string);
-disp_wrapper!(d_rust_char, display_rust_char);
-disp_wrapper!(d_rust_byte_string, display_rust_byte_string);
-disp_wrapper!(d_sql, display_sql);
-disp_wrapper!(d_sql_backslash, display_sql_backslash);
+include!("../src/encoders.rs");
 
 struct Encoder {
     name: &'static str,
@@ -1145,133 +1109,68 @@ struct Encoder {
     disp_fn: ForFn,
 }
 
-macro_rules! enc {
-    ($name:literal, $f:ident, $w:ident, $d:ident) => {
-        Encoder {
-            name: $name,
-            for_fn: $f,
-            write_fn: $w as WriteFn,
-            disp_fn: $d,
+macro_rules! registry {
+    (
+        $($context:ident: $module:ident::{$for_fn:ident, $write_fn:ident, $display_fn:ident},)*
+    ) => {
+        fn all_encoders() -> Vec<Encoder> {
+            vec![$(Encoder {
+                name: stringify!($context),
+                for_fn: $for_fn,
+                write_fn: $write_fn as WriteFn,
+                disp_fn: |s| format!("{}", $display_fn(s)),
+            },)*]
         }
+
+        const LISTED_FNS: &[&str] = &[$(
+            concat!(stringify!($module), "::", stringify!($for_fn)),
+            concat!(stringify!($module), "::", stringify!($write_fn)),
+        )*];
     };
 }
 
-fn all_encoders() -> Vec<Encoder> {
-    vec![
-        enc!("html", for_html, write_html, d_html),
-        enc!(
-            "html_content",
-            for_html_content,
-            write_html_content,
-            d_html_content
-        ),
-        enc!(
-            "html_attribute",
-            for_html_attribute,
-            write_html_attribute,
-            d_html_attribute
-        ),
-        enc!(
-            "html_unquoted_attribute",
-            for_html_unquoted_attribute,
-            write_html_unquoted_attribute,
-            d_html_unquoted_attribute
-        ),
-        enc!("xml", for_xml, write_xml, d_xml),
-        enc!(
-            "xml_content",
-            for_xml_content,
-            write_xml_content,
-            d_xml_content
-        ),
-        enc!(
-            "xml_attribute",
-            for_xml_attribute,
-            write_xml_attribute,
-            d_xml_attribute
-        ),
-        enc!(
-            "xml_comment",
-            for_xml_comment,
-            write_xml_comment,
-            d_xml_comment
-        ),
-        enc!("cdata", for_cdata, write_cdata, d_cdata),
-        enc!("xml11", for_xml11, write_xml11, d_xml11),
-        enc!(
-            "xml11_content",
-            for_xml11_content,
-            write_xml11_content,
-            d_xml11_content
-        ),
-        enc!(
-            "xml11_attribute",
-            for_xml11_attribute,
-            write_xml11_attribute,
-            d_xml11_attribute
-        ),
-        enc!("javascript", for_javascript, write_javascript, d_javascript),
-        enc!(
-            "javascript_attribute",
-            for_javascript_attribute,
-            write_javascript_attribute,
-            d_javascript_attribute
-        ),
-        enc!(
-            "javascript_block",
-            for_javascript_block,
-            write_javascript_block,
-            d_javascript_block
-        ),
-        enc!(
-            "javascript_source",
-            for_javascript_source,
-            write_javascript_source,
-            d_javascript_source
-        ),
-        enc!(
-            "js_template",
-            for_js_template,
-            write_js_template,
-            d_js_template
-        ),
-        enc!("css_string", for_css_string, write_css_string, d_css_string),
-        enc!("css_url", for_css_url, write_css_url, d_css_url),
-        enc!(
-            "uri_component",
-            for_uri_component,
-            write_uri_component,
-            d_uri_component
-        ),
-        enc!("uri_path", for_uri_path, write_uri_path, d_uri_path),
-        enc!(
-            "form_urlencoded",
-            for_form_urlencoded,
-            write_form_urlencoded,
-            d_form_urlencoded
-        ),
-        enc!("json", for_json, write_json, d_json),
-        enc!(
-            "rust_string",
-            for_rust_string,
-            write_rust_string,
-            d_rust_string
-        ),
-        enc!("rust_char", for_rust_char, write_rust_char, d_rust_char),
-        enc!(
-            "rust_byte_string",
-            for_rust_byte_string,
-            write_rust_byte_string,
-            d_rust_byte_string
-        ),
-        enc!("sql", for_sql, write_sql, d_sql),
-        enc!(
-            "sql_backslash",
-            for_sql_backslash,
-            write_sql_backslash,
-            d_sql_backslash
-        ),
-    ]
+encoders!(registry);
+
+#[test]
+fn encoder_list_matches_the_public_encoders() {
+    let src = std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/src"));
+    let mut declared = std::collections::BTreeSet::new();
+    let mut dirs = vec![src.to_path_buf()];
+    while let Some(dir) = dirs.pop() {
+        for file in std::fs::read_dir(dir).unwrap() {
+            let path = file.unwrap().path();
+            if path.is_dir() {
+                dirs.push(path);
+                continue;
+            }
+            let rel = path.strip_prefix(src).unwrap().with_extension("");
+            let mut module: Vec<_> = rel.iter().map(|c| c.to_str().unwrap()).collect();
+            if module.last() == Some(&"mod") {
+                module.pop();
+            }
+            let module = module.join("::");
+            for line in std::fs::read_to_string(&path).unwrap().lines() {
+                let Some(name) = line
+                    .strip_prefix("pub fn ")
+                    .and_then(|l| l.split(['(', '<']).next())
+                else {
+                    continue;
+                };
+                // the checked variant returns `Option` and has no write_/display_ form.
+                if (name.starts_with("for_") || name.starts_with("write_"))
+                    && name != "for_rust_char_checked"
+                {
+                    declared.insert(format!("{module}::{name}"));
+                }
+            }
+        }
+    }
+    let listed = LISTED_FNS.iter().map(|f| f.to_string()).collect();
+    let diff: Vec<_> = declared.symmetric_difference(&listed).collect();
+    assert!(
+        diff.is_empty(),
+        "src/ and the list in src/encoders.rs disagree on {diff:?}"
+    );
 }
 
 // ---------------------------------------------------------------------------

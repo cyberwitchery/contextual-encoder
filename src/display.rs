@@ -47,176 +47,35 @@
 
 use std::fmt;
 
-use crate::{css, html, javascript, json, rust, sql, uri, xml};
-
-macro_rules! display_fn {
+macro_rules! display_fns {
     (
-        $(#[$meta:meta])*
-        $name:ident => $module:ident :: $write_fn:ident
-    ) => {
-        $(#[$meta])*
-        pub fn $name(input: &str) -> impl fmt::Display + '_ {
+        $($context:ident: $module:ident::{$for_fn:ident, $write_fn:ident, $display_fn:ident},)*
+    ) => {$(
+        #[doc = concat!(
+            "zero-allocation display wrapper for [`",
+            stringify!($for_fn),
+            "`](crate::",
+            stringify!($for_fn),
+            ")."
+        )]
+        pub fn $display_fn(input: &str) -> impl fmt::Display + '_ {
             struct W<'a>(&'a str);
             impl fmt::Display for W<'_> {
                 fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
                     if f.width().is_none() && f.precision().is_none() {
-                        return $module::$write_fn(f, self.0);
+                        return crate::$module::$write_fn(f, self.0);
                     }
                     let mut encoded = String::with_capacity(self.0.len());
-                    $module::$write_fn(&mut encoded, self.0)?;
+                    crate::$module::$write_fn(&mut encoded, self.0)?;
                     f.pad(&encoded)
                 }
             }
             W(input)
         }
-    };
+    )*};
 }
 
-display_fn! {
-    /// zero-allocation display wrapper for [`for_html`](crate::for_html).
-    display_html => html::write_html
-}
-
-display_fn! {
-    /// zero-allocation display wrapper for [`for_html_content`](crate::for_html_content).
-    display_html_content => html::write_html_content
-}
-
-display_fn! {
-    /// zero-allocation display wrapper for [`for_html_attribute`](crate::for_html_attribute).
-    display_html_attribute => html::write_html_attribute
-}
-
-display_fn! {
-    /// zero-allocation display wrapper for
-    /// [`for_html_unquoted_attribute`](crate::for_html_unquoted_attribute).
-    display_html_unquoted_attribute => html::write_html_unquoted_attribute
-}
-
-display_fn! {
-    /// zero-allocation display wrapper for [`for_xml`](crate::for_xml).
-    display_xml => xml::write_xml
-}
-
-display_fn! {
-    /// zero-allocation display wrapper for [`for_xml_content`](crate::for_xml_content).
-    display_xml_content => xml::write_xml_content
-}
-
-display_fn! {
-    /// zero-allocation display wrapper for [`for_xml_attribute`](crate::for_xml_attribute).
-    display_xml_attribute => xml::write_xml_attribute
-}
-
-display_fn! {
-    /// zero-allocation display wrapper for [`for_xml_comment`](crate::for_xml_comment).
-    display_xml_comment => xml::write_xml_comment
-}
-
-display_fn! {
-    /// zero-allocation display wrapper for [`for_cdata`](crate::for_cdata).
-    display_cdata => xml::write_cdata
-}
-
-display_fn! {
-    /// zero-allocation display wrapper for [`for_xml11`](crate::for_xml11).
-    display_xml11 => xml::write_xml11
-}
-
-display_fn! {
-    /// zero-allocation display wrapper for [`for_xml11_content`](crate::for_xml11_content).
-    display_xml11_content => xml::write_xml11_content
-}
-
-display_fn! {
-    /// zero-allocation display wrapper for [`for_xml11_attribute`](crate::for_xml11_attribute).
-    display_xml11_attribute => xml::write_xml11_attribute
-}
-
-display_fn! {
-    /// zero-allocation display wrapper for [`for_javascript`](crate::for_javascript).
-    display_javascript => javascript::write_javascript
-}
-
-display_fn! {
-    /// zero-allocation display wrapper for
-    /// [`for_javascript_attribute`](crate::for_javascript_attribute).
-    display_javascript_attribute => javascript::write_javascript_attribute
-}
-
-display_fn! {
-    /// zero-allocation display wrapper for
-    /// [`for_javascript_block`](crate::for_javascript_block).
-    display_javascript_block => javascript::write_javascript_block
-}
-
-display_fn! {
-    /// zero-allocation display wrapper for
-    /// [`for_javascript_source`](crate::for_javascript_source).
-    display_javascript_source => javascript::write_javascript_source
-}
-
-display_fn! {
-    /// zero-allocation display wrapper for [`for_js_template`](crate::for_js_template).
-    display_js_template => javascript::write_js_template
-}
-
-display_fn! {
-    /// zero-allocation display wrapper for [`for_css_string`](crate::for_css_string).
-    display_css_string => css::write_css_string
-}
-
-display_fn! {
-    /// zero-allocation display wrapper for [`for_css_url`](crate::for_css_url).
-    display_css_url => css::write_css_url
-}
-
-display_fn! {
-    /// zero-allocation display wrapper for [`for_uri_component`](crate::for_uri_component).
-    display_uri_component => uri::write_uri_component
-}
-
-display_fn! {
-    /// zero-allocation display wrapper for [`for_uri_path`](crate::for_uri_path).
-    display_uri_path => uri::write_uri_path
-}
-
-display_fn! {
-    /// zero-allocation display wrapper for
-    /// [`for_form_urlencoded`](crate::for_form_urlencoded).
-    display_form_urlencoded => uri::write_form_urlencoded
-}
-
-display_fn! {
-    /// zero-allocation display wrapper for [`for_json`](crate::for_json).
-    display_json => json::write_json
-}
-
-display_fn! {
-    /// zero-allocation display wrapper for [`for_rust_string`](crate::for_rust_string).
-    display_rust_string => rust::write_rust_string
-}
-
-display_fn! {
-    /// zero-allocation display wrapper for [`for_rust_char`](crate::for_rust_char).
-    display_rust_char => rust::write_rust_char
-}
-
-display_fn! {
-    /// zero-allocation display wrapper for
-    /// [`for_rust_byte_string`](crate::for_rust_byte_string).
-    display_rust_byte_string => rust::write_rust_byte_string
-}
-
-display_fn! {
-    /// zero-allocation display wrapper for [`for_sql`](crate::for_sql).
-    display_sql => sql::write_sql
-}
-
-display_fn! {
-    /// zero-allocation display wrapper for [`for_sql_backslash`](crate::for_sql_backslash).
-    display_sql_backslash => sql::write_sql_backslash
-}
+encoders!(display_fns);
 
 #[cfg(test)]
 mod tests {
@@ -238,9 +97,20 @@ mod tests {
     }
 
     macro_rules! display_matches_for {
-        ($name:ident, $display_fn:ident, $for_fn:path) => {
+        (
+            $($context:ident: $module:ident::{$for_fn:ident, $write_fn:ident, $display_fn:ident},)*
+        ) => {$(
             #[test]
-            fn $name() {
+            fn $context() {
+                assert_eq!(
+                    [stringify!($for_fn), stringify!($write_fn), stringify!($display_fn)],
+                    [
+                        concat!("for_", stringify!($context)),
+                        concat!("write_", stringify!($context)),
+                        concat!("display_", stringify!($context)),
+                    ],
+                    "a list entry must name the for_/write_/display_ fns of its own context",
+                );
                 for input in [
                     "",
                     "hello",
@@ -257,7 +127,7 @@ mod tests {
                     "key=val&foo=bar",
                     "`${inject}`",
                 ] {
-                    let encoded = $for_fn(input);
+                    let encoded = crate::$for_fn(input);
                     assert_fmt_parity!("{}", $display_fn, input, encoded);
                     assert_fmt_parity!("{:>12}", $display_fn, input, encoded);
                     assert_fmt_parity!("{:<12}", $display_fn, input, encoded);
@@ -268,100 +138,10 @@ mod tests {
                     assert_fmt_parity!("{:*>20.7}", $display_fn, input, encoded);
                 }
             }
-        };
+        )*};
     }
 
-    // html
-    display_matches_for!(html, display_html, crate::for_html);
-    display_matches_for!(html_content, display_html_content, crate::for_html_content);
-    display_matches_for!(
-        html_attribute,
-        display_html_attribute,
-        crate::for_html_attribute
-    );
-    display_matches_for!(
-        html_unquoted_attribute,
-        display_html_unquoted_attribute,
-        crate::for_html_unquoted_attribute
-    );
-
-    // xml
-    display_matches_for!(xml, display_xml, crate::for_xml);
-    display_matches_for!(xml_content, display_xml_content, crate::for_xml_content);
-    display_matches_for!(
-        xml_attribute,
-        display_xml_attribute,
-        crate::for_xml_attribute
-    );
-    display_matches_for!(xml_comment, display_xml_comment, crate::for_xml_comment);
-    display_matches_for!(cdata, display_cdata, crate::for_cdata);
-    display_matches_for!(xml11, display_xml11, crate::for_xml11);
-    display_matches_for!(
-        xml11_content,
-        display_xml11_content,
-        crate::for_xml11_content
-    );
-    display_matches_for!(
-        xml11_attribute,
-        display_xml11_attribute,
-        crate::for_xml11_attribute
-    );
-
-    // javascript
-    display_matches_for!(javascript, display_javascript, crate::for_javascript);
-    display_matches_for!(
-        javascript_attribute,
-        display_javascript_attribute,
-        crate::for_javascript_attribute
-    );
-    display_matches_for!(
-        javascript_block,
-        display_javascript_block,
-        crate::for_javascript_block
-    );
-    display_matches_for!(
-        javascript_source,
-        display_javascript_source,
-        crate::for_javascript_source
-    );
-    display_matches_for!(js_template, display_js_template, crate::for_js_template);
-
-    // css
-    display_matches_for!(css_string, display_css_string, crate::for_css_string);
-    display_matches_for!(css_url, display_css_url, crate::for_css_url);
-
-    // uri
-    display_matches_for!(
-        uri_component,
-        display_uri_component,
-        crate::for_uri_component
-    );
-    display_matches_for!(uri_path, display_uri_path, crate::for_uri_path);
-    display_matches_for!(
-        form_urlencoded,
-        display_form_urlencoded,
-        crate::for_form_urlencoded
-    );
-
-    // json
-    display_matches_for!(json, display_json, crate::for_json);
-
-    // rust
-    display_matches_for!(rust_string, display_rust_string, crate::for_rust_string);
-    display_matches_for!(rust_char, display_rust_char, crate::for_rust_char);
-    display_matches_for!(
-        rust_byte_string,
-        display_rust_byte_string,
-        crate::for_rust_byte_string
-    );
-
-    // sql
-    display_matches_for!(sql, display_sql, crate::for_sql);
-    display_matches_for!(
-        sql_backslash,
-        display_sql_backslash,
-        crate::for_sql_backslash
-    );
+    encoders!(display_matches_for);
 
     // -- usage pattern tests --
 
