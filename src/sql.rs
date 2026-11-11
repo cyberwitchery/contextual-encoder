@@ -98,8 +98,8 @@ fn write_sql_encoded<W: fmt::Write>(out: &mut W, c: char, _next: Option<char>) -
     match c {
         '\'' => out.write_str("''"),
         '\0' => Ok(()), // remove NUL bytes
-        _ if is_unicode_noncharacter(c as u32) => out.write_char(' '),
-        _ => out.write_char(c),
+        // unicode non-characters, and anything else the predicate flags
+        _ => out.write_char(' '),
     }
 }
 
@@ -157,8 +157,8 @@ fn write_sql_backslash_encoded<W: fmt::Write>(
         '\x1A' => out.write_str("\\Z"),
         '\'' => out.write_str("\\'"),
         '\\' => out.write_str("\\\\"),
-        _ if is_unicode_noncharacter(c as u32) => out.write_char(' '),
-        _ => out.write_char(c),
+        // unicode non-characters, and anything else the predicate flags
+        _ => out.write_char(' '),
     }
 }
 

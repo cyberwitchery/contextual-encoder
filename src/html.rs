@@ -1,4 +1,4 @@
-//! HTML / XML contextual output encoders.
+//! HTML contextual output encoders.
 //!
 //! provides four encoding contexts with different safety guarantees:
 //!
