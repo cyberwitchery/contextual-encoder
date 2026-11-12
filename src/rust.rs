@@ -34,10 +34,7 @@
 
 use std::fmt;
 
-use crate::engine::{
-    encode_loop, is_text_direction_control, is_unicode_noncharacter, needs_byte_string_encoding,
-    write_byte_string_encoded, write_rust_named_escape,
-};
+use crate::engine::{encode_loop, is_text_direction_control, is_unicode_noncharacter};
 
 /// encodes `input` for safe embedding in a rust string literal (`"..."`).
 ///
@@ -148,18 +145,27 @@ fn needs_rust_char_encoding(c: char) -> bool {
 /// writes the encoded form of a character for rust string or char context.
 /// `quote` is the delimiter being escaped (`"` or `'`).
 fn write_rust_text_encoded<W: fmt::Write>(out: &mut W, c: char, quote: char) -> fmt::Result {
+    if let Some(escape) = named_escape(c) {
+        return out.write_str(escape);
+    }
     match c {
-        '\0' => out.write_str("\\0"),
-        '\t' => out.write_str("\\t"),
-        '\n' => out.write_str("\\n"),
-        '\r' => out.write_str("\\r"),
-        '\\' => out.write_str("\\\\"),
         '"' if quote == '"' => out.write_str("\\\""),
         '\'' if quote == '\'' => out.write_str("\\'"),
         c if is_unicode_noncharacter(c as u32) => out.write_char(' '),
         c if is_text_direction_control(c) => write!(out, "\\u{{{:04x}}}", c as u32),
         // other C0 controls and DEL
         c => write!(out, "\\x{:02x}", c as u32),
+    }
+}
+
+fn named_escape(c: char) -> Option<&'static str> {
+    match c {
+        '\0' => Some("\\0"),
+        '\t' => Some("\\t"),
+        '\n' => Some("\\n"),
+        '\r' => Some("\\r"),
+        '\\' => Some("\\\\"),
+        _ => None,
     }
 }
 
@@ -189,9 +195,43 @@ pub fn for_rust_byte_string(input: &str) -> String {
 ///
 /// see [`for_rust_byte_string`] for encoding rules.
 pub fn write_rust_byte_string<W: fmt::Write>(out: &mut W, input: &str) -> fmt::Result {
-    encode_loop(out, input, needs_byte_string_encoding, |out, c, _next| {
-        write_byte_string_encoded(out, c, write_rust_named_escape)
-    })
+    encode_loop(
+        out,
+        input,
+        needs_byte_string_encoding,
+        write_byte_string_encoded,
+    )
+}
+
+fn needs_byte_string_encoding(c: char) -> bool {
+    matches!(c, '\x00'..='\x1F' | '\x7F' | '"' | '\\') || !c.is_ascii()
+}
+
+fn write_byte_string_encoded<W: fmt::Write>(
+    out: &mut W,
+    c: char,
+    _next: Option<char>,
+) -> fmt::Result {
+    if let Some(escape) = named_escape(c) {
+        return out.write_str(escape);
+    }
+    match c {
+        '"' => out.write_str("\\\""),
+        // non-ASCII → encode each UTF-8 byte
+        c if !c.is_ascii() => write_utf8_hex_bytes(out, c),
+        // other C0 controls and DEL
+        c => write!(out, "\\x{:02x}", c as u32),
+    }
+}
+
+/// writes each UTF-8 byte of a non-ASCII character as `\xHH`.
+fn write_utf8_hex_bytes<W: fmt::Write>(out: &mut W, c: char) -> fmt::Result {
+    let mut buf = [0u8; 4];
+    let encoded = c.encode_utf8(&mut buf);
+    for b in encoded.as_bytes() {
+        write!(out, "\\x{b:02x}")?;
+    }
+    Ok(())
 }
 
 #[cfg(test)]

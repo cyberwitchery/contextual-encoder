@@ -24,7 +24,7 @@
 
 use std::fmt;
 
-use crate::engine::{encode_loop, is_unicode_noncharacter};
+use crate::engine::{encode_loop, is_text_direction_control, is_unicode_noncharacter};
 
 /// encodes `input` for safe embedding in a quoted CSS string value.
 ///
@@ -69,7 +69,14 @@ pub fn write_css_string<W: fmt::Write>(out: &mut W, input: &str) -> fmt::Result 
 }
 
 fn needs_css_string_encoding(c: char) -> bool {
-    needs_css_common_encoding(c) || matches!(c, '(' | ')')
+    let cp = c as u32;
+    cp <= 0x1F
+        || matches!(c, '"' | '\'' | '\\' | '<' | '&' | '/' | '>' | '(' | ')')
+        || (0x7F..=0x9F).contains(&cp) // DEL + C1 controls
+        || cp == 0x2028
+        || cp == 0x2029
+        || is_text_direction_control(c)
+        || is_unicode_noncharacter(cp)
 }
 
 /// encodes `input` for safe embedding in a CSS `url()` value.
@@ -112,18 +119,6 @@ pub fn write_css_url<W: fmt::Write>(out: &mut W, input: &str) -> fmt::Result {
 fn needs_css_url_encoding(c: char) -> bool {
     // css whitespace is space, tab and newline; only space is not a C0 control
     needs_css_string_encoding(c) || c == ' '
-}
-
-fn needs_css_common_encoding(c: char) -> bool {
-    let cp = c as u32;
-    cp <= 0x1F
-        || matches!(c, '"' | '\'' | '\\' | '<' | '&' | '/' | '>')
-        || (0x7F..=0x9F).contains(&cp) // DEL + C1 controls
-        || cp == 0x2028
-        || cp == 0x2029
-        || (0x202A..=0x202E).contains(&cp) // bidi embeddings and overrides
-        || (0x2066..=0x2069).contains(&cp) // bidi isolates
-        || is_unicode_noncharacter(cp)
 }
 
 fn write_css_encoded<W: fmt::Write>(out: &mut W, c: char, next: Option<char>) -> fmt::Result {
