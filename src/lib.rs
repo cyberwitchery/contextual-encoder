@@ -225,7 +225,8 @@ mod tests {
 
     macro_rules! assert_empty {
         (
-            $($context:ident: $module:ident::{$for_fn:ident, $write_fn:ident, $display_fn:ident},)*
+            $($context:ident: $module:ident::{$for_fn:ident, $write_fn:ident, $display_fn:ident}
+                => $property:ident,)*
         ) => {
             $(assert_eq!($for_fn(""), "", stringify!($for_fn));)*
         };
