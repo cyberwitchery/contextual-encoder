@@ -231,7 +231,7 @@ fn rust_literal_unescape(s: &str, quote: char) -> String {
                 let hi = chars
                     .next()
                     .and_then(|d| d.to_digit(8))
-                    .expect("octal digit");
+                    .expect("ascii hex escape");
                 let lo = chars
                     .next()
                     .and_then(|d| d.to_digit(16))
@@ -1146,6 +1146,45 @@ struct Encoder {
     disp_fn: ForFn,
 }
 
+// the property each context is swept by; any other pairing fails to compile.
+macro_rules! pinned {
+    (html => markup_text) => {};
+    (html_content => markup_content) => {};
+    (html_attribute => markup_attribute) => {};
+    (html_unquoted_attribute => unquoted_attribute) => {};
+    (xml => markup_text) => {};
+    (xml_content => markup_content) => {};
+    (xml_attribute => markup_attribute) => {};
+    (xml_comment => xml_comment) => {};
+    (cdata => cdata) => {};
+    (xml11 => xml11_text) => {};
+    (xml11_content => xml11_content) => {};
+    (xml11_attribute => xml11_attribute) => {};
+    (javascript => js_script_data) => {};
+    (javascript_attribute => js_string) => {};
+    (javascript_block => js_script_data) => {};
+    (javascript_source => js_string) => {};
+    (js_template => js_script_data) => {};
+    (css_string => css_string) => {};
+    (css_url => css_url) => {};
+    (uri_component => percent_encoded) => {};
+    (uri_path => percent_encoded) => {};
+    (form_urlencoded => form_encoded) => {};
+    (json => json_string) => {};
+    (rust_string => rust_string) => {};
+    (rust_char => rust_char) => {};
+    (rust_byte_string => rust_byte_string) => {};
+    (sql => sql_string) => {};
+    (sql_backslash => mysql_string) => {};
+    ($context:ident => $property:ident) => {
+        compile_error!(concat!(
+            stringify!($context),
+            " is not swept by ",
+            stringify!($property)
+        ));
+    };
+}
+
 macro_rules! registry {
     (
         $($context:ident: $module:ident::{$for_fn:ident, $write_fn:ident, $display_fn:ident}
@@ -1166,6 +1205,8 @@ macro_rules! registry {
         )*];
 
         mod sweep {$(
+            pinned!($context => $property);
+
             #[test]
             fn $context() {
                 super::$property(stringify!($for_fn), super::$for_fn);

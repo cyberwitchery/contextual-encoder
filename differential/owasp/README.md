@@ -2,7 +2,10 @@
 
 `tests/conformance.rs` tags every vector `upstream`, `deviation` or
 `non_owasp`. `Check.java` runs the first two through the OWASP Java Encoder:
-an upstream vector must equal its output, a deviation must differ.
+an upstream vector must equal its output, a deviation must differ, and a
+`JsFragmentGuards` deviation must differ only where java `\xHH`-escapes a
+character that variant lists. a `non_owasp` vector must be for an encoder with
+no OWASP method.
 
 ## run
 

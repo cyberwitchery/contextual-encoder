@@ -38,7 +38,7 @@ enum Parity {
 enum Deviation {
     /// NEL (U+0085) becomes a space like the other C1 controls.
     Nel,
-    /// script data escapes `<` and `&`, not every character of `<!--`, `</script` or `${`.
+    /// script data leaves space, `!`, `$`, `-`, `>`, `{`, `` ` `` and the letters of `script` raw.
     JsFragmentGuards,
     /// a css hex escape at the end of the input keeps its trailing space.
     CssTrailingSpace,

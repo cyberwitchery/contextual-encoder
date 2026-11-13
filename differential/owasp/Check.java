@@ -42,6 +42,29 @@ public class Check {
         return out.toString();
     }
 
+    static final String JS_GUARDS = " !$->`{CIPRSTciprst";
+
+    // turns each \xHH escape of a JS_GUARDS character back into the character
+    static String unguard(String s) {
+        StringBuilder out = new StringBuilder();
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (c == '\\' && s.startsWith("x", i + 1)) {
+                char raw = (char) Integer.parseInt(s.substring(i + 2, i + 4), 16);
+                if (JS_GUARDS.indexOf(raw) >= 0) {
+                    out.append(raw);
+                    i += 3;
+                    continue;
+                }
+            }
+            out.append(c);
+            if (c == '\\') {
+                out.append(s.charAt(++i));
+            }
+        }
+        return out.toString();
+    }
+
     static String escape(String s) {
         StringBuilder out = new StringBuilder();
         s.codePoints().forEach(cp -> {
@@ -63,6 +86,11 @@ public class Check {
             String tag = f[0], line = f[1], encoder = f[2].replaceFirst("^for_", "");
             if (tag.equals("non_owasp")) {
                 nonOwasp++;
+                if (METHODS.containsKey(encoder)) {
+                    failed++;
+                    System.out.println("non_owasp line " + line + " " + encoder + "(" + f[3]
+                            + "): OWASP has " + METHODS.get(encoder));
+                }
                 continue;
             }
             String method = METHODS.get(encoder);
@@ -73,14 +101,17 @@ public class Check {
             }
             String java = (String) Encode.class.getMethod(method, String.class)
                     .invoke(null, unescape(f[3]));
-            boolean same = java.equals(unescape(f[4]));
+            String rust = unescape(f[4]);
+            boolean same = java.equals(rust);
             outputs.add(line + "\t" + encoder + "\t" + f[3] + "\t" + escape(java));
             if (tag.equals("upstream")) {
                 upstream++;
             } else {
                 deviation++;
             }
-            if (same != tag.equals("upstream")) {
+            boolean described = !tag.equals("deviation:JsFragmentGuards")
+                    || unguard(java).equals(rust);
+            if (same != tag.equals("upstream") || !described) {
                 failed++;
                 System.out.println(tag + " line " + line + " " + encoder + "(" + f[3] + "): rust "
                         + f[4] + ", java " + escape(java));
