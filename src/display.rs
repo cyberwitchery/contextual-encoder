@@ -49,7 +49,8 @@ use std::fmt;
 
 macro_rules! display_fns {
     (
-        $($context:ident: $module:ident::{$for_fn:ident, $write_fn:ident, $display_fn:ident},)*
+        $($context:ident: $module:ident::{$for_fn:ident, $write_fn:ident, $display_fn:ident}
+            => $property:ident,)*
     ) => {$(
         #[doc = concat!(
             "zero-allocation display wrapper for [`",
@@ -98,7 +99,8 @@ mod tests {
 
     macro_rules! display_matches_for {
         (
-            $($context:ident: $module:ident::{$for_fn:ident, $write_fn:ident, $display_fn:ident},)*
+            $($context:ident: $module:ident::{$for_fn:ident, $write_fn:ident, $display_fn:ident}
+                => $property:ident,)*
         ) => {$(
             #[test]
             fn $context() {

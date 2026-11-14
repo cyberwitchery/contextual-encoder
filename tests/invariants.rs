@@ -5,12 +5,13 @@
 //! (`0..=0x10FFFF`, ~1.1M values) and asserts machine-checked invariants that
 //! must hold for *every* input:
 //!
-//! - **round-trip** for the lossless encoders: a hand-written decoder (std
-//!   only, defined below) recovers the original string from the encoded form.
-//! - **safety** for the lossy encoders: no context-breaking sequence survives
-//!   in the output for that encoder's specific context.
-//! - **boundary**: two `write_*` calls into one sink concatenate to output that
-//!   is still safe and still decodes to both inputs.
+//! - **round-trip** or **safety**, whichever property the entry in
+//!   `src/encoders.rs` names: a hand-written decoder (std only, defined below)
+//!   recovers the original string from the encoded form, or no
+//!   context-breaking sequence survives in the output for that context.
+//! - **boundary**: for js_template, the css encoders, xml_comment and cdata,
+//!   two `write_*` calls into one sink concatenate to output that is still
+//!   safe and still decodes to both inputs.
 //! - **universal**: ascii-alphanumeric input is identity, and the `for_*`,
 //!   `write_*`, and `display_*` variants agree.
 //!
@@ -200,8 +201,74 @@ fn rust_byte_string_unescape(s: &str) -> String {
     String::from_utf8(bytes).expect("byte-string decode yields valid utf-8")
 }
 
+/// the codepoints `rustc` denies raw in a literal.
+fn is_text_direction_control(c: char) -> bool {
+    matches!(c, '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}')
+}
+
+/// unescapes a `quote`-delimited rust string or char literal body per the Rust
+/// Reference's grammar, panicking where `rustc` would reject it.
+fn rust_literal_unescape(s: &str, quote: char) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut chars = s.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c != '\\' {
+            let rejected = c == quote
+                || c == '\r'
+                || is_text_direction_control(c)
+                || (quote == '\'' && matches!(c, '\n' | '\t'));
+            assert!(!rejected, "raw {c:?} in rust literal body {s:?}");
+            out.push(c);
+            continue;
+        }
+        match chars.next().expect("escape body") {
+            q @ ('\'' | '"' | '\\') => out.push(q),
+            'n' => out.push('\n'),
+            'r' => out.push('\r'),
+            't' => out.push('\t'),
+            '0' => out.push('\0'),
+            'x' => {
+                let hi = chars
+                    .next()
+                    .and_then(|d| d.to_digit(8))
+                    .expect("ascii hex escape");
+                let lo = chars
+                    .next()
+                    .and_then(|d| d.to_digit(16))
+                    .expect("hex digit");
+                out.push(char::from((hi * 16 + lo) as u8));
+            }
+            'u' => {
+                assert_eq!(chars.next(), Some('{'), "`\\u` without `{{` in {s:?}");
+                let (mut cp, mut digits) = (0u32, 0);
+                loop {
+                    match chars.next().expect("closing `}`") {
+                        '}' => break,
+                        '_' if digits > 0 => {}
+                        d => {
+                            assert!(digits < 6, "over-long unicode escape in {s:?}");
+                            cp = cp * 16 + d.to_digit(16).expect("hex digit");
+                            digits += 1;
+                        }
+                    }
+                }
+                assert!(digits > 0, "empty unicode escape in {s:?}");
+                out.push(char::from_u32(cp).expect("unicode escape names a scalar"));
+            }
+            '\n' if quote == '"' => {
+                while chars
+                    .next_if(|c| matches!(c, ' ' | '\t' | '\n' | '\r'))
+                    .is_some()
+                {}
+            }
+            other => panic!("unexpected rust escape \\{other} in {s:?}"),
+        }
+    }
+    out
+}
+
 // ===========================================================================
-// (A) round-trip invariants for the lossless encoders
+// (A) round-trip properties
 // ===========================================================================
 
 /// asserts `decode(encode(input)) == input` with a helpful message.
@@ -219,56 +286,31 @@ fn assert_roundtrip(
     );
 }
 
-#[test]
-fn roundtrip_uri_component() {
+fn percent_encoded(name: &str, encode: ForFn) {
     let mut buf = [0u8; 4];
     for c in scalars() {
-        assert_roundtrip("uri_component", one(c, &mut buf), for_uri_component, |s| {
-            percent_decode(s, false)
-        });
+        assert_roundtrip(name, one(c, &mut buf), encode, |s| percent_decode(s, false));
     }
-}
-
-#[test]
-fn roundtrip_uri_path() {
-    let mut buf = [0u8; 4];
-    for c in scalars() {
-        assert_roundtrip("uri_path", one(c, &mut buf), for_uri_path, |s| {
-            percent_decode(s, false)
-        });
-    }
-    // slashes are preserved as separators, not encoded
     for input in ["/", "//", "/a/b/c", "a/b", "/café/世/😀/"] {
-        assert_roundtrip("uri_path", input, for_uri_path, |s| {
-            percent_decode(s, false)
-        });
+        assert_roundtrip(name, input, encode, |s| percent_decode(s, false));
     }
 }
 
-#[test]
-fn roundtrip_form_urlencoded() {
+fn form_encoded(name: &str, encode: ForFn) {
     let mut buf = [0u8; 4];
     for c in scalars() {
-        assert_roundtrip(
-            "form_urlencoded",
-            one(c, &mut buf),
-            for_form_urlencoded,
-            |s| percent_decode(s, true),
-        );
+        assert_roundtrip(name, one(c, &mut buf), encode, |s| percent_decode(s, true));
     }
     // literal '+' in the input must not be confused with an encoded space
     for input in ["a+b", "a b", " + ", "a*b~c"] {
-        assert_roundtrip("form_urlencoded", input, for_form_urlencoded, |s| {
-            percent_decode(s, true)
-        });
+        assert_roundtrip(name, input, encode, |s| percent_decode(s, true));
     }
 }
 
-#[test]
-fn roundtrip_json() {
+fn json_string(name: &str, encode: ForFn) {
     let mut buf = [0u8; 4];
     for c in scalars() {
-        assert_roundtrip("json", one(c, &mut buf), for_json, json_unescape);
+        assert_roundtrip(name, one(c, &mut buf), encode, json_unescape);
     }
     for input in [
         "he said \"hi\"",
@@ -277,57 +319,90 @@ fn roundtrip_json() {
         "</script>",
         "\x00\x0b\x1f",
     ] {
-        assert_roundtrip("json", input, for_json, json_unescape);
+        assert_roundtrip(name, input, encode, json_unescape);
     }
 }
 
-#[test]
-fn roundtrip_javascript() {
-    let encoders: &[(&str, ForFn)] = &[
-        ("javascript", for_javascript),
-        ("javascript_attribute", for_javascript_attribute),
-        ("javascript_block", for_javascript_block),
-        ("javascript_source", for_javascript_source),
-        ("js_template", for_js_template),
-    ];
+fn js_string(name: &str, encode: ForFn) {
     let mut buf = [0u8; 4];
     for c in scalars() {
-        let s = one(c, &mut buf);
-        for (name, enc) in encoders {
-            assert_roundtrip(name, s, enc, js_unescape);
-        }
+        assert_roundtrip(name, one(c, &mut buf), encode, js_unescape);
     }
     // adjacency-sensitive cases (template `${`, `</script>`, backslashes)
     for input in ["${x}", "a${b}c", "`tpl`", "</script>", "a\\b", "'\"&/"] {
-        for (name, enc) in encoders {
-            assert_roundtrip(name, input, enc, js_unescape);
+        assert_roundtrip(name, input, encode, js_unescape);
+    }
+}
+
+/// [`js_string`], plus neither a raw `<`, which moves an HTML tokenizer out of
+/// script data, nor a raw `&`, which an XHTML parser decodes as a character
+/// reference before javascript sees the text.
+fn js_script_data(name: &str, encode: ForFn) {
+    js_string(name, encode);
+    let mut buf = [0u8; 4];
+    for c in scalars() {
+        let out = encode(one(c, &mut buf));
+        if let Some(bad) = out.chars().find(|&c| matches!(c, '<' | '&')) {
+            panic!("{name}: raw {bad:?} in {out:?} for input {c:?}");
         }
     }
 }
 
-#[test]
-fn roundtrip_rust_byte_string() {
+fn rust_byte_string(name: &str, encode: ForFn) {
     let mut buf = [0u8; 4];
     for c in scalars() {
-        assert_roundtrip(
-            "rust_byte_string",
-            one(c, &mut buf),
-            for_rust_byte_string,
-            rust_byte_string_unescape,
-        );
+        assert_roundtrip(name, one(c, &mut buf), encode, rust_byte_string_unescape);
     }
     for input in ["say \"hi\"", "a\\b", "café", "null\x00byte", "😀𐍈"] {
-        assert_roundtrip(
-            "rust_byte_string",
-            input,
-            for_rust_byte_string,
-            rust_byte_string_unescape,
-        );
+        assert_roundtrip(name, input, encode, rust_byte_string_unescape);
+    }
+}
+
+/// asserts `encode(input)` is a `quote`-delimited rust literal body denoting
+/// `input`, with each noncharacter read back as the space the encoder writes.
+fn assert_rust_literal_holds(name: &str, encode: ForFn, input: &str, quote: char) {
+    let out = encode(input);
+    let want: String = input
+        .chars()
+        .map(|c| if is_noncharacter(c as u32) { ' ' } else { c })
+        .collect();
+    assert_eq!(
+        rust_literal_unescape(&out, quote),
+        want,
+        "{name}: {input:?} -> {out:?}"
+    );
+}
+
+fn rust_string(name: &str, encode: ForFn) {
+    let mut buf = [0u8; 4];
+    for c in scalars() {
+        assert_rust_literal_holds(name, encode, one(c, &mut buf), '"');
+    }
+    for input in [
+        "say \"hi\"",
+        "a\\b",
+        "it's",
+        "a\r\nb",
+        "\\\n  x",
+        "\\u{41}",
+        "a\u{202E}b\u{2069}c",
+        "\u{FDD0}x\u{10FFFF}",
+        "café 世界 😀",
+    ] {
+        assert_rust_literal_holds(name, encode, input, '"');
+    }
+}
+
+/// [`rust_string`] for char literals: one char in, one char literal out.
+fn rust_char(name: &str, encode: ForFn) {
+    let mut buf = [0u8; 4];
+    for c in scalars() {
+        assert_rust_literal_holds(name, encode, one(c, &mut buf), '\'');
     }
 }
 
 // ===========================================================================
-// (B) safety invariants for the lossy encoders
+// (B) safety properties
 // ===========================================================================
 
 /// length of a valid html/xml entity at the start of `s` (which begins with
@@ -404,83 +479,61 @@ fn assert_markup_safe(
     }
 }
 
-#[test]
-fn safety_html_family() {
-    // for_html / for_xml: text + attribute context — encodes < > " ' and &
-    assert_markup_safe("for_html", for_html, |c| {
+// text + attribute context: encodes < > " ' and &
+fn markup_text(name: &str, encode: ForFn) {
+    assert_markup_safe(name, encode, |c| {
         matches!(c, '<' | '>' | '"' | '\'') || is_invalid_for_xml(c)
-    });
-    assert_markup_safe("for_xml", for_xml, |c| {
-        matches!(c, '<' | '>' | '"' | '\'') || is_invalid_for_xml(c)
-    });
-
-    // content context — does not encode quotes
-    assert_markup_safe("for_html_content", for_html_content, |c| {
-        matches!(c, '<' | '>') || is_invalid_for_xml(c)
-    });
-    assert_markup_safe("for_xml_content", for_xml_content, |c| {
-        matches!(c, '<' | '>') || is_invalid_for_xml(c)
-    });
-
-    // attribute context — does not encode '>'
-    assert_markup_safe("for_html_attribute", for_html_attribute, |c| {
-        matches!(c, '<' | '"' | '\'') || is_invalid_for_xml(c)
-    });
-    assert_markup_safe("for_xml_attribute", for_xml_attribute, |c| {
-        matches!(c, '<' | '"' | '\'') || is_invalid_for_xml(c)
-    });
-
-    // unquoted attribute — the most aggressive: whitespace, delimiters, and
-    // controls (which become '-') must never appear raw
-    assert_markup_safe(
-        "for_html_unquoted_attribute",
-        for_html_unquoted_attribute,
-        |c| {
-            let cp = c as u32;
-            matches!(
-                c,
-                ' ' | '\t' | '\n' | '\x0C' | '\r' | '<' | '>' | '"' | '\'' | '/' | '=' | '`'
-            ) || cp <= 0x1F
-                || cp == 0x7F
-                || (0x80..=0x9F).contains(&cp)
-                || cp == 0x2028
-                || cp == 0x2029
-                || is_noncharacter(cp)
-        },
-    );
-
-    // xml 1.1 — restricted controls, NEL and U+2028 become &#xHH; (not space)
-    assert_markup_safe("for_xml11", for_xml11, |c| {
-        matches!(c, '<' | '>' | '"' | '\'') || is_xml11_restricted(c)
-    });
-    assert_markup_safe("for_xml11_content", for_xml11_content, |c| {
-        matches!(c, '<' | '>') || is_xml11_restricted(c)
-    });
-    assert_markup_safe("for_xml11_attribute", for_xml11_attribute, |c| {
-        matches!(c, '<' | '"' | '\'') || is_xml11_restricted(c)
     });
 }
 
-/// the `<script>`-block encoders must emit neither a raw `<`, which moves an
-/// HTML tokenizer out of script data, nor a raw `&`, which an XHTML parser
-/// decodes as a character reference before javascript sees the text.
-#[test]
-fn safety_script_block_encoders() {
-    let encoders: &[(&str, ForFn)] = &[
-        ("javascript", for_javascript),
-        ("javascript_block", for_javascript_block),
-        ("js_template", for_js_template),
-    ];
-    let mut buf = [0u8; 4];
-    for c in scalars() {
-        let s = one(c, &mut buf);
-        for (name, enc) in encoders {
-            let out = enc(s);
-            if let Some(bad) = out.chars().find(|&c| matches!(c, '<' | '&')) {
-                panic!("{name}: raw {bad:?} in {out:?} for input {c:?}");
-            }
-        }
-    }
+// content context: does not encode quotes
+fn markup_content(name: &str, encode: ForFn) {
+    assert_markup_safe(name, encode, |c| {
+        matches!(c, '<' | '>') || is_invalid_for_xml(c)
+    });
+}
+
+// attribute context: does not encode '>'
+fn markup_attribute(name: &str, encode: ForFn) {
+    assert_markup_safe(name, encode, |c| {
+        matches!(c, '<' | '"' | '\'') || is_invalid_for_xml(c)
+    });
+}
+
+// the most aggressive: whitespace, delimiters, and controls (which become '-')
+// must never appear raw
+fn unquoted_attribute(name: &str, encode: ForFn) {
+    assert_markup_safe(name, encode, |c| {
+        let cp = c as u32;
+        matches!(
+            c,
+            ' ' | '\t' | '\n' | '\x0C' | '\r' | '<' | '>' | '"' | '\'' | '/' | '=' | '`'
+        ) || cp <= 0x1F
+            || cp == 0x7F
+            || (0x80..=0x9F).contains(&cp)
+            || cp == 0x2028
+            || cp == 0x2029
+            || is_noncharacter(cp)
+    });
+}
+
+// xml 1.1: restricted controls, NEL and U+2028 become &#xHH; (not space)
+fn xml11_text(name: &str, encode: ForFn) {
+    assert_markup_safe(name, encode, |c| {
+        matches!(c, '<' | '>' | '"' | '\'') || is_xml11_restricted(c)
+    });
+}
+
+fn xml11_content(name: &str, encode: ForFn) {
+    assert_markup_safe(name, encode, |c| {
+        matches!(c, '<' | '>') || is_xml11_restricted(c)
+    });
+}
+
+fn xml11_attribute(name: &str, encode: ForFn) {
+    assert_markup_safe(name, encode, |c| {
+        matches!(c, '<' | '"' | '\'') || is_xml11_restricted(c)
+    });
 }
 
 /// true if the char is a dangerous CSS char that must be hex-escaped, excluding
@@ -511,30 +564,16 @@ fn css_backslashes_escaped(s: &str) -> bool {
     true
 }
 
-#[test]
-fn safety_css() {
-    let mut buf = [0u8; 4];
-    for c in scalars() {
-        let s = one(c, &mut buf);
-
-        let out = for_css_string(s);
-        if let Some(bad) = out.chars().find(|&c| css_forbidden_raw(c)) {
-            panic!("for_css_string: raw {bad:?} in {out:?} for input {c:?}");
-        }
-        assert!(
-            css_backslashes_escaped(&out),
-            "for_css_string: unescaped backslash in {out:?} for input {c:?}"
-        );
-
-        let out = for_css_url(s);
-        if let Some(bad) = out.chars().find(|&c| css_forbidden_raw(c)) {
-            panic!("for_css_url: raw {bad:?} in {out:?} for input {c:?}");
-        }
-        assert!(
-            css_backslashes_escaped(&out),
-            "for_css_url: unescaped backslash in {out:?} for input {c:?}"
-        );
+/// asserts no raw dangerous char and no unescaped backslash in `encode(input)`.
+fn assert_css_escaped(name: &str, encode: ForFn, input: &str) {
+    let out = encode(input);
+    if let Some(bad) = out.chars().find(|&c| css_forbidden_raw(c)) {
+        panic!("{name}: raw {bad:?} in {out:?} for input {input:?}");
     }
+    assert!(
+        css_backslashes_escaped(&out),
+        "{name}: unescaped backslash in {out:?} for input {input:?}"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -712,26 +751,26 @@ fn css_expected_value(input: &str) -> String {
 /// a bad url's remnant consumption shows up as the token running past its `)`.
 const CSS_TAIL: &str = ";color:green}";
 
-/// asserts `url(<for_css_url(input)>)` is one url-token spanning the whole
-/// value: no early terminator, no bad-url-token, no change to the value.
-fn assert_url_token_intact(input: &str) {
-    let encoded = for_css_url(input);
+/// asserts `url(<encode(input)>)` is one url-token spanning the whole value:
+/// no early terminator, no bad-url-token, no change to the value.
+fn assert_url_token_intact(name: &str, encode: ForFn, input: &str) {
+    let encoded = encode(input);
     let sheet = css_preprocess(&format!("url({encoded}){CSS_TAIL}"));
     let expected_end = sheet.len() - CSS_TAIL.chars().count();
     match consume_url_token(&sheet, 4) {
         UrlToken::Url(value, end) => {
             assert_eq!(
                 end, expected_end,
-                "for_css_url: url-token did not end at its `)` for {input:?} -> {encoded:?}"
+                "{name}: url-token did not end at its `)` for {input:?} -> {encoded:?}"
             );
             assert_eq!(
                 value,
                 css_expected_value(input),
-                "for_css_url: value altered for {input:?} -> {encoded:?}"
+                "{name}: value altered for {input:?} -> {encoded:?}"
             );
         }
         UrlToken::Bad(end) => panic!(
-            "for_css_url: bad-url-token for {input:?} -> {encoded:?}, swallowing {:?}",
+            "{name}: bad-url-token for {input:?} -> {encoded:?}, swallowing {:?}",
             sheet[..end].iter().collect::<String>()
         ),
     }
@@ -739,8 +778,8 @@ fn assert_url_token_intact(input: &str) {
 
 /// the [`assert_url_token_intact`] analogue for quoted string values, checked
 /// against both delimiters.
-fn assert_string_token_intact(input: &str) {
-    let encoded = for_css_string(input);
+fn assert_string_token_intact(name: &str, encode: ForFn, input: &str) {
+    let encoded = encode(input);
     for quote in ['"', '\''] {
         let sheet = css_preprocess(&format!("{quote}{encoded}{quote}{CSS_TAIL}"));
         let expected_end = sheet.len() - CSS_TAIL.chars().count();
@@ -748,16 +787,16 @@ fn assert_string_token_intact(input: &str) {
             StringToken::Str(value, end) => {
                 assert_eq!(
                     end, expected_end,
-                    "for_css_string: string-token did not end at its {quote:?} for {input:?} -> {encoded:?}"
+                    "{name}: string-token did not end at its {quote:?} for {input:?} -> {encoded:?}"
                 );
                 assert_eq!(
                     value,
                     css_expected_value(input),
-                    "for_css_string: value altered for {input:?} -> {encoded:?}"
+                    "{name}: value altered for {input:?} -> {encoded:?}"
                 );
             }
             StringToken::Bad => {
-                panic!("for_css_string: bad-string-token for {input:?} -> {encoded:?}")
+                panic!("{name}: bad-string-token for {input:?} -> {encoded:?}")
             }
         }
     }
@@ -798,25 +837,27 @@ const CSS_ADVERSARIAL: &[&str] = &[
     "a\u{a0}b\u{2003}c\u{3000}d",
 ];
 
-#[test]
-fn safety_css_url_stays_one_url_token() {
+fn css_url(name: &str, encode: ForFn) {
     let mut buf = [0u8; 4];
     for c in scalars() {
-        assert_url_token_intact(one(c, &mut buf));
+        let s = one(c, &mut buf);
+        assert_css_escaped(name, encode, s);
+        assert_url_token_intact(name, encode, s);
     }
     for input in CSS_ADVERSARIAL {
-        assert_url_token_intact(input);
+        assert_url_token_intact(name, encode, input);
     }
 }
 
-#[test]
-fn safety_css_string_stays_one_string_token() {
+fn css_string(name: &str, encode: ForFn) {
     let mut buf = [0u8; 4];
     for c in scalars() {
-        assert_string_token_intact(one(c, &mut buf));
+        let s = one(c, &mut buf);
+        assert_css_escaped(name, encode, s);
+        assert_string_token_intact(name, encode, s);
     }
     for input in CSS_ADVERSARIAL {
-        assert_string_token_intact(input);
+        assert_string_token_intact(name, encode, input);
     }
 }
 
@@ -869,55 +910,59 @@ fn sql_backslash_escaped(s: &str) -> bool {
     true
 }
 
-#[test]
-fn safety_sql() {
+/// adversarial injection payloads for both sql encoders.
+const SQL_ADVERSARIAL: &[&str] = &["'; DROP TABLE t; --", "''", "a'b'c", "\\'", "\\", "a\\'b"];
+
+fn sql_string(name: &str, encode: ForFn) {
     let mut buf = [0u8; 4];
     for c in scalars() {
-        let out = for_sql(one(c, &mut buf));
+        let out = encode(one(c, &mut buf));
         assert!(
             sql_quotes_doubled(&out),
-            "for_sql: unescaped quote for {c:?}: {out:?}"
+            "{name}: unescaped quote for {c:?}: {out:?}"
         );
-        assert!(!out.contains('\0'), "for_sql: nul survived for {c:?}");
+        assert!(!out.contains('\0'), "{name}: nul survived for {c:?}");
         assert!(
             !out.chars().any(|c| is_noncharacter(c as u32)),
-            "for_sql: raw noncharacter for {c:?}"
-        );
-
-        let out = for_sql_backslash(one(c, &mut buf));
-        assert!(
-            sql_backslash_escaped(&out),
-            "for_sql_backslash: unescaped quote/backslash for {c:?}: {out:?}"
-        );
-        assert!(
-            !out.chars().any(|c| is_noncharacter(c as u32)),
-            "for_sql_backslash: raw noncharacter for {c:?}"
+            "{name}: raw noncharacter for {c:?}"
         );
     }
-    // adversarial injection payloads
-    for input in ["'; DROP TABLE t; --", "''", "a'b'c", "\\'", "\\", "a\\'b"] {
-        assert!(sql_quotes_doubled(&for_sql(input)), "for_sql: {input:?}");
+    for input in SQL_ADVERSARIAL {
+        assert!(sql_quotes_doubled(&encode(input)), "{name}: {input:?}");
+    }
+}
+
+fn mysql_string(name: &str, encode: ForFn) {
+    let mut buf = [0u8; 4];
+    for c in scalars() {
+        let out = encode(one(c, &mut buf));
         assert!(
-            sql_backslash_escaped(&for_sql_backslash(input)),
-            "for_sql_backslash: {input:?}"
+            sql_backslash_escaped(&out),
+            "{name}: unescaped quote/backslash for {c:?}: {out:?}"
         );
+        assert!(
+            !out.chars().any(|c| is_noncharacter(c as u32)),
+            "{name}: raw noncharacter for {c:?}"
+        );
+    }
+    for input in SQL_ADVERSARIAL {
+        assert!(sql_backslash_escaped(&encode(input)), "{name}: {input:?}");
     }
 }
 
 /// asserts that `input`, encoded between trusted `prefix` and `suffix` in one
 /// CDATA section, reads back as `prefix`, the input and `suffix`.
-fn assert_cdata_holds_between(prefix: &str, input: &str, suffix: &str) {
-    let section = format!("<![CDATA[{prefix}{}{suffix}]]>", for_cdata(input));
+fn assert_cdata_holds_between(encode: ForFn, prefix: &str, input: &str, suffix: &str) {
+    let section = format!("<![CDATA[{prefix}{}{suffix}]]>", encode(input));
     let want = format!("{prefix}{}{suffix}", cdata_expected_value(input));
     assert_eq!(
         decode_cdata_fragment(&section),
         Some(want),
-        "for_cdata: {prefix:?}+{input:?}+{suffix:?} -> {section:?}"
+        "{prefix:?}+{input:?}+{suffix:?} -> {section:?}"
     );
 }
 
-#[test]
-fn safety_cdata() {
+fn cdata(name: &str, encode: ForFn) {
     let mut buf = [0u8; 4];
     for c in scalars() {
         for probe in [
@@ -926,7 +971,19 @@ fn safety_cdata() {
             format!("]]>{c}"),
             format!("{c}]]>"),
         ] {
-            assert_cdata_holds_between("]]", &probe, "]>");
+            assert_cdata_holds_between(encode, "]]", &probe, "]>");
+        }
+        for probe in [
+            String::from(one(c, &mut buf)),
+            format!("]{c}"),
+            format!("{c}]"),
+            format!("{c}]]"),
+        ] {
+            let out = encode(&probe);
+            assert!(
+                !out.ends_with(']'),
+                "{name}: output ends with `]` for {probe:?}: {out:?}"
+            );
         }
     }
     for input in [
@@ -942,7 +999,7 @@ fn safety_cdata() {
         ">x<evil/><![CDATA[",
         "]>x<evil/><![CDATA[",
     ] {
-        assert_cdata_holds_between("]]", input, "]>");
+        assert_cdata_holds_between(encode, "]]", input, "]>");
     }
 }
 
@@ -1032,44 +1089,24 @@ fn safety_cdata_across_a_write_boundary() {
     }
 }
 
-#[test]
-fn cdata_output_never_ends_with_a_bracket() {
-    let mut buf = [0u8; 4];
-    for c in scalars() {
-        for probe in [
-            String::from(one(c, &mut buf)),
-            format!("]{c}"),
-            format!("{c}]"),
-            format!("{c}]]"),
-        ] {
-            let out = for_cdata(&probe);
-            assert!(
-                !out.ends_with(']'),
-                "for_cdata: output ends with `]` for {probe:?}: {out:?}"
-            );
-        }
-    }
-}
-
 /// asserts that `input`, encoded between trusted `prefix` and `suffix`, still
 /// forms a well-formed comment body.
-fn assert_xml_comment_holds_between(prefix: &str, input: &str, suffix: &str) {
-    let body = format!("{prefix}{}{suffix}", for_xml_comment(input));
+fn assert_xml_comment_holds_between(encode: ForFn, prefix: &str, input: &str, suffix: &str) {
+    let body = format!("{prefix}{}{suffix}", encode(input));
     assert!(
         xml_comment_body_is_well_formed(&body),
-        "for_xml_comment: {prefix:?}+{input:?}+{suffix:?} -> {body:?}"
+        "{prefix:?}+{input:?}+{suffix:?} -> {body:?}"
     );
 }
 
-#[test]
-fn safety_xml_comment() {
+fn xml_comment(name: &str, encode: ForFn) {
     let mut buf = [0u8; 4];
     for c in scalars() {
         let s = one(c, &mut buf);
-        let out = for_xml_comment(s);
+        let out = encode(s);
         assert!(
             !out.chars().any(is_invalid_for_xml),
-            "for_xml_comment: raw invalid-xml char in {out:?} for {c:?}"
+            "{name}: raw invalid-xml char in {out:?} for {c:?}"
         );
         for probe in [
             String::from(s),
@@ -1077,7 +1114,7 @@ fn safety_xml_comment() {
             format!("{c}--"),
             format!("--{c}"),
         ] {
-            assert_xml_comment_holds_between("a-", &probe, "-a");
+            assert_xml_comment_holds_between(encode, "a-", &probe, "-a");
         }
     }
     for input in [
@@ -1092,7 +1129,7 @@ fn safety_xml_comment() {
         "-><evil/>",
         "-x",
     ] {
-        assert_xml_comment_holds_between("a-", input, "-a");
+        assert_xml_comment_holds_between(encode, "a-", input, "-a");
     }
 }
 
@@ -1109,9 +1146,49 @@ struct Encoder {
     disp_fn: ForFn,
 }
 
+// the property each context is swept by; any other pairing fails to compile.
+macro_rules! pinned {
+    (html => markup_text) => {};
+    (html_content => markup_content) => {};
+    (html_attribute => markup_attribute) => {};
+    (html_unquoted_attribute => unquoted_attribute) => {};
+    (xml => markup_text) => {};
+    (xml_content => markup_content) => {};
+    (xml_attribute => markup_attribute) => {};
+    (xml_comment => xml_comment) => {};
+    (cdata => cdata) => {};
+    (xml11 => xml11_text) => {};
+    (xml11_content => xml11_content) => {};
+    (xml11_attribute => xml11_attribute) => {};
+    (javascript => js_script_data) => {};
+    (javascript_attribute => js_string) => {};
+    (javascript_block => js_script_data) => {};
+    (javascript_source => js_string) => {};
+    (js_template => js_script_data) => {};
+    (css_string => css_string) => {};
+    (css_url => css_url) => {};
+    (uri_component => percent_encoded) => {};
+    (uri_path => percent_encoded) => {};
+    (form_urlencoded => form_encoded) => {};
+    (json => json_string) => {};
+    (rust_string => rust_string) => {};
+    (rust_char => rust_char) => {};
+    (rust_byte_string => rust_byte_string) => {};
+    (sql => sql_string) => {};
+    (sql_backslash => mysql_string) => {};
+    ($context:ident => $property:ident) => {
+        compile_error!(concat!(
+            stringify!($context),
+            " is not swept by ",
+            stringify!($property)
+        ));
+    };
+}
+
 macro_rules! registry {
     (
-        $($context:ident: $module:ident::{$for_fn:ident, $write_fn:ident, $display_fn:ident},)*
+        $($context:ident: $module:ident::{$for_fn:ident, $write_fn:ident, $display_fn:ident}
+            => $property:ident,)*
     ) => {
         fn all_encoders() -> Vec<Encoder> {
             vec![$(Encoder {
@@ -1126,6 +1203,15 @@ macro_rules! registry {
             concat!(stringify!($module), "::", stringify!($for_fn)),
             concat!(stringify!($module), "::", stringify!($write_fn)),
         )*];
+
+        mod sweep {$(
+            pinned!($context => $property);
+
+            #[test]
+            fn $context() {
+                super::$property(stringify!($for_fn), super::$for_fn);
+            }
+        )*}
     };
 }
 
