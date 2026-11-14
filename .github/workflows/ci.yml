@@ -57,6 +57,23 @@ jobs:
           cache-key-prefix: kache-test
       - run: cargo test
 
+  msrv:
+    name: msrv
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - id: msrv
+        run: echo "version=$(sed -n 's/^rust-version *= *"\([^"]*\)".*/\1/p' Cargo.toml)" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
+        with:
+          toolchain: ${{ steps.msrv.outputs.version }}
+      - uses: kunobi-ninja/kache-action@ad7317540dcdd71c904f7a60a87b620a0c0e67ed # v1
+        with:
+          cache-key-prefix: kache-msrv
+      # the v4 lockfile is too new for this cargo, and there are no dependencies to lock
+      - run: rm Cargo.lock
+      - run: cargo test
+
   doc:
     name: doc
     runs-on: ubuntu-latest
@@ -136,7 +153,7 @@ jobs:
 
   success:
     name: success
-    needs: [fmt, clippy, test, doc, differential, deny, coverage, unsafe-budget, sbom]
+    needs: [fmt, clippy, test, msrv, doc, differential, deny, coverage, unsafe-budget, sbom]
     runs-on: ubuntu-latest
     if: always()
     steps:
