@@ -1,36 +1,4 @@
 //! rust literal encoders.
-//!
-//! encodes untrusted strings for safe embedding in rust source literals.
-//!
-//! - [`for_rust_string`] — safe for rust string literals (`"..."`)
-//! - [`for_rust_char`] — safe for rust char literals (`'...'`)
-//! - [`for_rust_char_checked`] — as [`for_rust_char`], but rejects input that is
-//!   not exactly one character
-//! - [`for_rust_byte_string`] — safe for rust byte string literals (`b"..."`)
-//!
-//! # encoding rules
-//!
-//! all three encoders use rust's native escape syntax:
-//!
-//! - named escapes: `\0`, `\t`, `\n`, `\r`, `\\`
-//! - C0 controls and DEL without named escapes → `\xHH`
-//! - unicode non-characters → space (string/char) or `\xHH` per byte (byte string)
-//! - bidi formatting controls → `\u{HHHH}` (string/char) or `\xHH` per byte
-//!   (byte string)
-//!
-//! the encoders differ in which quote is escaped and how non-ASCII is handled:
-//!
-//! | encoder | quote escape | non-ASCII |
-//! |---------|-------------|-----------|
-//! | `for_rust_string` | `"` → `\"` | passes through |
-//! | `for_rust_char` | `'` → `\'` | passes through |
-//! | `for_rust_byte_string` | `"` → `\"` | each UTF-8 byte → `\xHH` |
-//!
-//! # char literal length
-//!
-//! a rust char literal holds exactly one unicode scalar value, so the char
-//! encoders require input of exactly one character. empty or longer input
-//! encodes to a literal body that does not compile.
 
 use std::fmt;
 

@@ -1,5 +1,9 @@
 # changelog
 
+## Unreleased
+
+- **breaking:** the context modules (`html`, `xml`, `javascript`, `css`, `uri`, `json`, `rust`, `sql`, `display`) are private. every encoder is still exported at the crate root, so `contextual_encoder::html::for_html` becomes `contextual_encoder::for_html`. the modules' security notes and encoding rules are now in the crate docs, under each context
+
 ## [0.11.0] - 2026-11-03
 
 - **breaking:** `for_js_template` now escapes a leading `{` as `\x7b`. emitted raw after trusted template text ending in `$`, it opened an interpolation

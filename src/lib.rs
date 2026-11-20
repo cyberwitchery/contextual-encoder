@@ -46,6 +46,20 @@
 //! | [`for_html_attribute`] | quoted attributes only |
 //! | [`for_html_unquoted_attribute`] | unquoted attribute values |
 //!
+//! all encoders replace invalid XML characters (C0/C1 controls, DEL, unicode
+//! non-characters) with a replacement character (space or dash depending on
+//! context).
+//!
+//! ### security notes
+//!
+//! - these encoders produce output safe for embedding in the specified context.
+//!   they do not sanitize HTML — encoding is not a substitute for input validation.
+//! - never use `for_html_content` output in an attribute context.
+//! - never use `for_html_attribute` output in a text content context where `>` matters.
+//! - `for_html` is the safe default when the exact context is unknown.
+//! - tag names, attribute names, and event handler names must be validated
+//!   separately — encoding cannot make arbitrary names safe.
+//!
 //! ## XML
 //!
 //! | function | safe for |
@@ -55,6 +69,15 @@
 //! | [`for_xml_attribute`] | quoted XML attributes only (alias for `for_html_attribute`) |
 //! | [`for_xml_comment`] | XML comment content |
 //! | [`for_cdata`] | CDATA section content |
+//!
+//! ### security notes
+//!
+//! - `for_xml_comment` is **not safe for HTML comments**. HTML comments have
+//!   vendor-specific extensions (e.g., `<!--[if IE]>`) that make safe encoding
+//!   impractical. this encoder is for XML comments only.
+//! - `for_cdata` splits the CDATA section at every `]` and `>`, so its output
+//!   can be up to 13 times longer than the input. the caller is responsible
+//!   for wrapping the output in `<![CDATA[...]]>`.
 //!
 //! ## XML 1.1
 //!
@@ -74,12 +97,52 @@
 //! | [`for_javascript_source`] | standalone .js files |
 //! | [`for_js_template`] | ES6 template literal content (`` `...` ``) |
 //!
+//! ### security notes
+//!
+//! - the string literal encoders ([`for_javascript`], [`for_javascript_attribute`],
+//!   [`for_javascript_block`], [`for_javascript_source`]) do **not** encode the
+//!   grave accent (`` ` ``). do not use them to embed data inside template
+//!   literals — use [`for_js_template`] instead.
+//! - these encoders are for string/template literal contexts only. they cannot
+//!   make arbitrary javascript expressions, variable names, or property
+//!   accessors safe.
+//! - `for_javascript_block` and `for_javascript_source` use backslash escapes
+//!   for quotes (`\"`, `\'`) which are **not safe in HTML attribute contexts**.
+//! - `for_javascript_attribute` does not escape `<` or `/` and is **not safe
+//!   in `<script>` blocks** where `</script>` could appear.
+//! - `for_javascript_source` does not escape `&`, so it is **not safe in an
+//!   XHTML `<script>`**, where character references are decoded before
+//!   javascript sees the text. the other four encoders escape it.
+//! - all five encoders escape the bidi formatting controls (U+202A-U+202E,
+//!   U+2066-U+2069) as `\uHHHH`, so a direction override in the data cannot
+//!   reorder how the generated javascript reads.
+//! - none of these encoders produce valid JSON — the `\xHH` escapes they emit
+//!   for control characters are not permitted in JSON. use
+//!   [`for_json`] for JSON string values.
+//!
 //! ## CSS
 //!
 //! | function | safe for |
 //! |----------|----------|
 //! | [`for_css_string`] | quoted CSS string values |
 //! | [`for_css_url`] | CSS `url()` values, quoted or unquoted |
+//!
+//! both use CSS hex escape syntax (`\XX`) with a trailing space appended
+//! when the next character could be misinterpreted as part of the hex value,
+//! or when the escape ends the output.
+//!
+//! ### security notes
+//!
+//! - CSS string values **must** be quoted. these encoders produce output safe
+//!   inside `"..."` or `'...'` delimiters.
+//! - these encoders do not validate CSS property names, selectors, or
+//!   expressions. encoding cannot make arbitrary CSS safe — validate the
+//!   structure separately.
+//! - for `url()` values, the URL itself must be validated (scheme whitelist,
+//!   etc.) before encoding. encoding only prevents syntax breakout.
+//! - both encoders escape the bidi formatting controls (U+202A-U+202E,
+//!   U+2066-U+2069), so a direction override in the data cannot reorder how the
+//!   surrounding stylesheet source reads.
 //!
 //! ## URI
 //!
@@ -88,6 +151,20 @@
 //! | [`for_uri_component`] | URI components (query params, path segments) |
 //! | [`for_uri_path`] | URI paths (preserves `/` separators) |
 //! | [`for_form_urlencoded`] | `application/x-www-form-urlencoded` values |
+//!
+//! provides percent-encoding for URI components and paths per RFC 3986, and
+//! for form values per the WHATWG URL Standard
+//! (`application/x-www-form-urlencoded`).
+//!
+//! ### security notes
+//!
+//! - these encoders are for **URI components, paths, and form values**, not
+//!   entire URLs.
+//! - they **cannot** make an untrusted full URL safe. a `javascript:` URL will
+//!   be percent-encoded but still execute. always validate the URL scheme and
+//!   structure separately before embedding untrusted URLs.
+//! - the output is safe for direct embedding in HTML, CSS, and javascript
+//!   contexts because all context-significant characters are percent-encoded.
 //!
 //! ## additional literal contexts
 //!
@@ -103,6 +180,108 @@
 //! | [`for_rust_byte_string`] | Rust byte string literals (`b"..."`) |
 //! | [`for_sql`] | Standard SQL string literals (`'...'`) |
 //! | [`for_sql_backslash`] | MySQL/MariaDB string literals with backslash escaping (`'...'`) |
+//!
+//! ### JSON
+//!
+//! #### why not `for_javascript_source`?
+//!
+//! JSON looks like JavaScript but has two critical encoding differences:
+//!
+//! - **no `\x` escapes.** JSON only supports `\uHHHH` for unicode escapes.
+//!   the `\xHH` form that JavaScript uses for control characters is invalid JSON.
+//! - **no single-quote escaping.** `\'` is not a valid JSON escape sequence.
+//!   single quotes are ordinary characters in JSON strings.
+//!
+//! using `for_javascript_source` for JSON output produces strings that may be
+//! rejected by strict JSON parsers.
+//!
+//! #### encoding rules
+//!
+//! - named escapes: `\b`, `\t`, `\n`, `\f`, `\r`, `\"`, `\\`
+//! - other C0 controls (U+0000–U+001F) → `\u00HH`
+//! - `<` → `\u003c`, `/` → `\/` (keeps the HTML tokenizer in script data
+//!   state when JSON is embedded in an HTML `<script>` block, so the block's
+//!   `</script>` still closes it. RFC 8259 §7 explicitly permits `\/`)
+//! - U+2028 → `\u2028`, U+2029 → `\u2029` (line/paragraph separators;
+//!   mandatory because JSON is often embedded in `<script>` blocks where
+//!   these would terminate the JavaScript string literal)
+//! - all other characters pass through unchanged
+//!
+//! ### Rust
+//!
+//! #### encoding rules
+//!
+//! all three encoders use rust's native escape syntax:
+//!
+//! - named escapes: `\0`, `\t`, `\n`, `\r`, `\\`
+//! - C0 controls and DEL without named escapes → `\xHH`
+//! - unicode non-characters → space (string/char) or `\xHH` per byte (byte string)
+//! - bidi formatting controls → `\u{HHHH}` (string/char) or `\xHH` per byte
+//!   (byte string)
+//!
+//! the encoders differ in which quote is escaped and how non-ASCII is handled:
+//!
+//! | encoder | quote escape | non-ASCII |
+//! |---------|-------------|-----------|
+//! | `for_rust_string` | `"` → `\"` | passes through |
+//! | `for_rust_char` | `'` → `\'` | passes through |
+//! | `for_rust_byte_string` | `"` → `\"` | each UTF-8 byte → `\xHH` |
+//!
+//! #### char literal length
+//!
+//! a rust char literal holds exactly one unicode scalar value, so the char
+//! encoders require input of exactly one character. empty or longer input
+//! encodes to a literal body that does not compile.
+//!
+//! ### SQL
+//!
+//! #### encoding rules
+//!
+//! ##### standard SQL (`for_sql`)
+//!
+//! standard SQL escapes single quotes by doubling them:
+//!
+//! | character | encoded as |
+//! |-----------|-----------|
+//! | `'` | `''` |
+//! | NUL (`\0`) | removed |
+//! | unicode non-characters | space |
+//!
+//! all other characters (including backslash) pass through unchanged — they
+//! have no special meaning in standard SQL string literals.
+//!
+//! ##### MySQL/MariaDB backslash escaping (`for_sql_backslash`)
+//!
+//! MySQL and MariaDB (when `NO_BACKSLASH_ESCAPES` is not set) use C-style
+//! backslash escape sequences:
+//!
+//! | character | encoded as |
+//! |-----------|-----------|
+//! | `'` | `\'` |
+//! | `\` | `\\` |
+//! | NUL (`\0`) | `\0` |
+//! | newline (`\n`) | `\n` |
+//! | carriage return (`\r`) | `\r` |
+//! | tab (`\t`) | `\t` |
+//! | backspace (`\x08`) | `\b` |
+//! | Control-Z (`\x1A`) | `\Z` |
+//! | unicode non-characters | space |
+//!
+//! #### security notes
+//!
+//! - **parameterized queries are always preferred.** these encoders exist for
+//!   cases where parameterized queries are not possible (e.g. string literals
+//!   in DDL, legacy code).
+//! - **identifiers cannot be encoded.** these encoders are for string literal
+//!   values. a table or column name is delimited by `"..."` (standard) or
+//!   `` `...` `` (MySQL), and neither delimiter is escaped — both pass through
+//!   unchanged. validate an untrusted identifier against a whitelist instead.
+//! - **know your dialect.** use `for_sql` for databases that follow the SQL
+//!   standard (PostgreSQL, SQLite, SQL Server, Oracle). use
+//!   `for_sql_backslash` for MySQL/MariaDB when `NO_BACKSLASH_ESCAPES` is
+//!   not enabled.
+//! - **do not use `for_sql` with MySQL** unless `NO_BACKSLASH_ESCAPES` is
+//!   set — a backslash can be used to escape the closing quote.
 //!
 //! # security model
 //!
@@ -167,23 +346,45 @@
 //! let safe = format!("<p>{}</p>", display_html(user_input));
 //! assert!(safe.contains("&lt;script&gt;"));
 //! ```
+//!
+//! ## formatting parameters
+//!
+//! width, fill/alignment and precision apply to the *encoded* output, exactly
+//! as `format!` applies them to the `String` returned by the `for_*`
+//! counterpart:
+//!
+//! ```
+//! use contextual_encoder::{display_html, for_html};
+//!
+//! assert_eq!(
+//!     format!("{:*^12}", display_html("a<b")),
+//!     format!("{:*^12}", for_html("a<b")),
+//! );
+//! ```
+//!
+//! a wrapper formatted with a width or a precision buffers the encoded output
+//! into one intermediate `String`; the bare `{}` case stays allocation-free.
+//!
+//! precision counts characters of the *encoded* output, so it can cut an
+//! escape or entity in half: `{:.4}` turns `a&lt;b` into `a&lt`, which an HTML
+//! parser can read back as `a<`. `for_*` truncates the same way. do not use
+//! precision to bound untrusted output — truncate the input before encoding it.
 
 #[macro_use]
 mod encoders;
 
-pub mod css;
-pub mod display;
-pub mod html;
-pub mod javascript;
-pub mod json;
-pub mod rust;
-pub mod sql;
-pub mod uri;
-pub mod xml;
+mod css;
+mod display;
+mod html;
+mod javascript;
+mod json;
+mod rust;
+mod sql;
+mod uri;
+mod xml;
 
 mod engine;
 
-// convenience re-exports — users can `use contextual_encoder::for_html` directly
 pub use css::{for_css_string, for_css_url, write_css_string, write_css_url};
 pub use display::{
     display_cdata, display_css_string, display_css_url, display_form_urlencoded, display_html,

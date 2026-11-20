@@ -1,18 +1,4 @@
 //! URI and form percent-encoders.
-//!
-//! provides percent-encoding for URI components and paths per RFC 3986, and
-//! for form values per the WHATWG URL Standard
-//! (`application/x-www-form-urlencoded`).
-//!
-//! # security notes
-//!
-//! - these encoders are for **URI components, paths, and form values**, not
-//!   entire URLs.
-//! - they **cannot** make an untrusted full URL safe. a `javascript:` URL will
-//!   be percent-encoded but still execute. always validate the URL scheme and
-//!   structure separately before embedding untrusted URLs.
-//! - the output is safe for direct embedding in HTML, CSS, and javascript
-//!   contexts because all context-significant characters are percent-encoded.
 
 use std::fmt;
 
