@@ -1,25 +1,4 @@
-//! HTML contextual output encoders.
-//!
-//! provides four encoding contexts with different safety guarantees:
-//!
-//! - [`for_html`] — safe for both text content and quoted attributes (most conservative)
-//! - [`for_html_content`] — safe for text content only (does not encode quotes)
-//! - [`for_html_attribute`] — safe for quoted attributes only (does not encode `>`)
-//! - [`for_html_unquoted_attribute`] — safe for unquoted attribute values (most aggressive)
-//!
-//! all encoders replace invalid XML characters (C0/C1 controls, DEL, unicode
-//! non-characters) with a replacement character (space or dash depending on
-//! context).
-//!
-//! # security notes
-//!
-//! - these encoders produce output safe for embedding in the specified context.
-//!   they do not sanitize HTML — encoding is not a substitute for input validation.
-//! - never use `for_html_content` output in an attribute context.
-//! - never use `for_html_attribute` output in a text content context where `>` matters.
-//! - `for_html` is the safe default when the exact context is unknown.
-//! - tag names, attribute names, and event handler names must be validated
-//!   separately — encoding cannot make arbitrary names safe.
+//! HTML encoders.
 
 use std::fmt;
 

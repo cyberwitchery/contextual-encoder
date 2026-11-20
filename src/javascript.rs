@@ -1,37 +1,4 @@
-//! javascript contextual output encoders.
-//!
-//! provides five encoding contexts:
-//!
-//! - [`for_javascript`] — universal encoder, safe in HTML attributes, script
-//!   blocks, and standalone .js files
-//! - [`for_javascript_attribute`] — optimized for HTML event attributes
-//!   (e.g., `onclick="..."`)
-//! - [`for_javascript_block`] — optimized for `<script>` blocks
-//! - [`for_javascript_source`] — optimized for standalone .js files
-//! - [`for_js_template`] — for ES6 template literal content (`` `...` ``)
-//!
-//! # security notes
-//!
-//! - the string literal encoders ([`for_javascript`], [`for_javascript_attribute`],
-//!   [`for_javascript_block`], [`for_javascript_source`]) do **not** encode the
-//!   grave accent (`` ` ``). do not use them to embed data inside template
-//!   literals — use [`for_js_template`] instead.
-//! - these encoders are for string/template literal contexts only. they cannot
-//!   make arbitrary javascript expressions, variable names, or property
-//!   accessors safe.
-//! - `for_javascript_block` and `for_javascript_source` use backslash escapes
-//!   for quotes (`\"`, `\'`) which are **not safe in HTML attribute contexts**.
-//! - `for_javascript_attribute` does not escape `<` or `/` and is **not safe
-//!   in `<script>` blocks** where `</script>` could appear.
-//! - `for_javascript_source` does not escape `&`, so it is **not safe in an
-//!   XHTML `<script>`**, where character references are decoded before
-//!   javascript sees the text. the other four encoders escape it.
-//! - all five encoders escape the bidi formatting controls (U+202A-U+202E,
-//!   U+2066-U+2069) as `\uHHHH`, so a direction override in the data cannot
-//!   reorder how the generated javascript reads.
-//! - none of these encoders produce valid JSON — the `\xHH` escapes they emit
-//!   for control characters are not permitted in JSON. use
-//!   [`for_json`](crate::for_json) for JSON string values.
+//! javascript encoders.
 
 use std::fmt;
 

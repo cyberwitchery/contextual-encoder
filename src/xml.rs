@@ -1,32 +1,4 @@
-//! XML-specific contextual output encoders.
-//!
-//! provides XML aliases for the HTML encoders, plus XML-only contexts:
-//!
-//! ## XML 1.0 aliases
-//!
-//! - [`for_xml`] — alias for [`crate::for_html`]
-//! - [`for_xml_content`] — alias for [`crate::for_html_content`]
-//! - [`for_xml_attribute`] — alias for [`crate::for_html_attribute`]
-//!
-//! ## XML-only contexts
-//!
-//! - [`for_xml_comment`] — safe for XML comment content
-//! - [`for_cdata`] — safe for CDATA section content
-//!
-//! ## XML 1.1
-//!
-//! - [`for_xml11`] — XML 1.1 content + attributes
-//! - [`for_xml11_content`] — XML 1.1 content only
-//! - [`for_xml11_attribute`] — XML 1.1 attributes only
-//!
-//! # security notes
-//!
-//! - `for_xml_comment` is **not safe for HTML comments**. HTML comments have
-//!   vendor-specific extensions (e.g., `<!--[if IE]>`) that make safe encoding
-//!   impractical. this encoder is for XML comments only.
-//! - `for_cdata` splits the CDATA section at every `]` and `>`, so its output
-//!   can be up to 13 times longer than the input. the caller is responsible
-//!   for wrapping the output in `<![CDATA[...]]>`.
+//! XML encoders.
 
 use std::fmt;
 

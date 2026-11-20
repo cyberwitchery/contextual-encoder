@@ -1,32 +1,4 @@
 //! JSON string encoder.
-//!
-//! encodes untrusted strings for safe embedding in JSON string values.
-//!
-//! - [`for_json`] — safe for JSON string contexts
-//!
-//! # why not `for_javascript_source`?
-//!
-//! JSON looks like JavaScript but has two critical encoding differences:
-//!
-//! - **no `\x` escapes.** JSON only supports `\uHHHH` for unicode escapes.
-//!   the `\xHH` form that JavaScript uses for control characters is invalid JSON.
-//! - **no single-quote escaping.** `\'` is not a valid JSON escape sequence.
-//!   single quotes are ordinary characters in JSON strings.
-//!
-//! using `for_javascript_source` for JSON output produces strings that may be
-//! rejected by strict JSON parsers.
-//!
-//! # encoding rules
-//!
-//! - named escapes: `\b`, `\t`, `\n`, `\f`, `\r`, `\"`, `\\`
-//! - other C0 controls (U+0000–U+001F) → `\u00HH`
-//! - `<` → `\u003c`, `/` → `\/` (keeps the HTML tokenizer in script data
-//!   state when JSON is embedded in an HTML `<script>` block, so the block's
-//!   `</script>` still closes it. RFC 8259 §7 explicitly permits `\/`)
-//! - U+2028 → `\u2028`, U+2029 → `\u2029` (line/paragraph separators;
-//!   mandatory because JSON is often embedded in `<script>` blocks where
-//!   these would terminate the JavaScript string literal)
-//! - all other characters pass through unchanged
 
 use std::fmt;
 
