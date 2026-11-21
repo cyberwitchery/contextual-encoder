@@ -2,13 +2,14 @@
 
 //! contextual output encoding for XSS defense and safe literal embedding.
 //!
-//! this crate provides context-aware encoding functions inspired by the
-//! [OWASP Java Encoder](https://owasp.org/owasp-java-encoder/). each function
-//! encodes input for safe embedding in a specific output context — web contexts
-//! (HTML, XML, JavaScript, CSS, URI) and source literal contexts (Rust).
+//! this crate provides context-aware encoding functions whose web encoders are
+//! derived from the [OWASP Java Encoder](https://owasp.org/owasp-java-encoder/).
+//! each function encodes input for safe embedding in a specific output
+//! context — web contexts (HTML, XML, JavaScript, CSS, URI) and source literal
+//! contexts (JSON, Rust, SQL).
 //!
 //! **disclaimer:** contextual-encoder is an independent Rust crate. its API and security model
-//! are inspired by the OWASP Java Encoder, but this project is not affiliated with,
+//! are derived from the OWASP Java Encoder, but this project is not affiliated with,
 //! endorsed by, or maintained by the OWASP Foundation.
 //!
 //! # quick start
@@ -335,7 +336,8 @@
 //! # display wrappers
 //!
 //! those same functions each have a corresponding `display_*` function that
-//! returns a zero-allocation [`Display`](std::fmt::Display) wrapper. use these
+//! returns a [`Display`](std::fmt::Display) wrapper that writes the encoded
+//! output as it is formatted. use these
 //! when embedding encoded output inline in `format!` or `write!`:
 //!
 //! ```
@@ -369,6 +371,11 @@
 //! escape or entity in half: `{:.4}` turns `a&lt;b` into `a&lt`, which an HTML
 //! parser can read back as `a<`. `for_*` truncates the same way. do not use
 //! precision to bound untrusted output — truncate the input before encoding it.
+
+// compiles the README's examples as doctests.
+#[cfg(doctest)]
+#[doc = include_str!("../README.md")]
+struct ReadmeDoctests;
 
 #[macro_use]
 mod encoders;

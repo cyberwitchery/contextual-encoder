@@ -52,7 +52,7 @@ fn main() {
     println!("--- javascript ---");
     println!("  for_javascript:               {}", for_javascript(input));
 
-    // html event attributes (onclick="...") — does not escape /
+    // html event attributes (onclick="...") — does not escape / or <
     println!(
         "  for_javascript_attribute:     {}",
         for_javascript_attribute(input)
@@ -143,7 +143,7 @@ fn main() {
     );
     println!();
 
-    // json string value — \\uXXXX escapes for control chars and specials
+    // json string value — \uXXXX escapes for control chars and specials
     println!("--- json ---");
     println!("  for_json:                     {}", for_json(input));
     println!();
