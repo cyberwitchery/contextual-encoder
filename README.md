@@ -1,12 +1,14 @@
 # contextual-encoder
 
-contextual output encoding for XSS defense and safe literal embedding,
-inspired by the [OWASP Java Encoder](https://owasp.org/owasp-java-encoder/).
+contextual output encoding for XSS defense and safe literal embedding. the
+web encoders' rules, context model and security caveats are derived from the
+[OWASP Java Encoder](https://owasp.org/owasp-java-encoder/).
 
 ## disclaimer
 
 contextual-encoder is an independent Rust crate for contextual output encoding.
-its API and security model are inspired by the OWASP Java Encoder.
+its API and security model are derived from the OWASP Java Encoder (see
+[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)).
 this project is not affiliated with, endorsed by, or maintained by the OWASP
 Foundation.
 
@@ -14,7 +16,7 @@ Foundation.
 
 a zero-dependency Rust library that encodes untrusted strings for safe
 embedding in web output contexts (HTML, JavaScript, CSS, URI, XML) and
-source literal contexts (Rust). each function targets a specific
+source literal contexts (JSON, Rust, SQL). each function targets a specific
 output context so that only the necessary characters are encoded.
 
 ## quick start
@@ -187,8 +189,8 @@ assert!(safe.contains("%3C"));
 
 ### writer-based API
 
-every `for_*` function has a `write_*` counterpart that writes to any
-`std::fmt::Write` implementor:
+every `for_*` function except `for_rust_char_checked` has a `write_*`
+counterpart that writes to any `std::fmt::Write` implementor:
 
 ```rust
 use contextual_encoder::write_html;
@@ -197,6 +199,26 @@ let mut buf = String::new();
 write_html(&mut buf, "safe & sound").unwrap();
 assert_eq!(buf, "safe &amp; sound");
 ```
+
+### display wrappers
+
+each `write_*` function also has a `display_*` counterpart that returns a
+`Display` wrapper, for encoding inline in `format!` or `write!` without an
+intermediate `String`:
+
+```rust
+use contextual_encoder::display_html;
+
+let page = format!("<p>{}</p>", display_html("1 < 2"));
+assert_eq!(page, "<p>1 &lt; 2</p>");
+```
+
+width, fill and precision apply to the encoded output, as they do to the
+`String` a `for_*` function returns; with either set, the wrapper buffers the
+output in one `String`. precision counts characters of the encoded output, so
+it can cut an escape in half: `{:.4}` turns `a&lt;b` into `a&lt`, which an
+HTML parser reads back as `a<`. truncate the input before encoding it, never
+the output.
 
 ## security model
 
@@ -238,16 +260,20 @@ is for XML comments only — it is **not safe for HTML comments**.
 
 ## relationship to OWASP Java Encoder
 
-the web output encoders (HTML, JavaScript, CSS, URI, XML) are modeled on
-the OWASP Java Encoder. the Rust literal encoders are additions
-specific to this crate.
+the web output encoders (HTML, JavaScript, CSS, URI, XML) are derived from
+the OWASP Java Encoder. `for_js_template` and the literal encoders (JSON,
+Rust, SQL) are additions specific to this crate.
 
 ### exact matches
 - encoding rules for `for_html`, `for_html_content`, `for_html_attribute`,
   `for_xml_comment`, `for_cdata` (apart from NEL, below),
   `for_html_unquoted_attribute`
-- JavaScript encoding rules across all four contexts
-- CSS hex escape format with trailing space separator (including C1 controls)
+- JavaScript encoding rules for `for_javascript`, `for_javascript_attribute`,
+  `for_javascript_block` and `for_javascript_source`, apart from `<` and the
+  bidirectional formatting characters (below)
+- CSS hex escape format with a trailing space separator between escapes and
+  the characters that follow (including C1 controls), apart from the separator
+  at the end of the output and the bidirectional formatting characters (below)
 - URI component percent-encoding of UTF-8 bytes
 - security caveats (grave accent, template literals, HTML comments, full URLs)
 
@@ -262,6 +288,15 @@ specific to this crate.
   unchanged in these contexts.
 - **`for_html` uses `&#34;` and `&#39;`** for quote encoding rather than
   `&quot;` — both are valid HTML and the numeric form is shorter.
+- **`<` in JavaScript:** `for_javascript` and `for_javascript_block` escape
+  `<` as `\x3c`, so the encoded string cannot spell `</script>` or `<!--`.
+- **bidirectional formatting characters** (U+202A-U+202E, U+2066-U+2069) are
+  escaped by every JavaScript encoder (`\uHHHH`) and both CSS encoders (as a
+  hex escape), so a direction override in the data cannot reorder how the
+  surrounding source reads.
+- **CSS separator at the end of the output:** the CSS encoders append the
+  separator space after a hex escape that ends the output too, so it cannot run
+  into whatever the caller writes next.
 - **`-` (hyphen) in JavaScript:** the Java encoder may escape `-` as `\-` in
   some JavaScript contexts to prevent `-->` sequences. this crate does not
   encode `-` in JavaScript. the `-->` sequence inside a JS string literal is

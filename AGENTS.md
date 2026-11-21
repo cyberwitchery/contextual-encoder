@@ -51,11 +51,16 @@ this is a rust library crate providing contextual output encoding for xss defens
 
 ## commands
 
-run these in order after making changes:
+run these in order after making changes; they are the ci gates:
 ```
 cargo fmt
 cargo clippy --all-targets -- -D warnings
 cargo test
+RUSTDOCFLAGS="-D warnings" cargo doc --no-deps
+cargo test --manifest-path differential/Cargo.toml --release --locked
+cargo deny check
+cargo llvm-cov --all-features --fail-under-lines 95
+unsafe-budget check
 ```
 
 ## constraints
@@ -73,7 +78,7 @@ stop and ask before:
 
 do not:
 - propose or implement new encoding languages/contexts — the supported language set is intentional and closed; do not add new ones without an explicit request from the maintainer
-- use `unwrap()` or `expect()` in library code (ok in tests and examples)
+- use `unwrap()` or `expect()` in library code (ok in tests and examples). the one exception is `.expect("writing to string cannot fail")` on a `write_*` call into a `String`, which cannot fail
 - swallow errors with `let _ =` without explaining why
 - write macros when functions suffice
 - ignore clippy lints—fix them or explicitly allow with justification
@@ -95,10 +100,7 @@ when adding or modifying code:
 
 ## verification
 
-after changes, run and report results:
-```
-cargo fmt && cargo clippy --all-targets -- -D warnings && cargo test
-```
+after changes, run the commands above and report the results.
 if any command fails, fix the issue before reporting completion.
 
 # security

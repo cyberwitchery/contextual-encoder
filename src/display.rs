@@ -1,4 +1,4 @@
-//! zero-allocation `Display` wrappers for every encoder.
+//! `Display` wrappers for every encoder.
 
 use std::fmt;
 
@@ -8,11 +8,13 @@ macro_rules! display_fns {
             => $property:ident,)*
     ) => {$(
         #[doc = concat!(
-            "zero-allocation display wrapper for [`",
+            "display wrapper for [`",
             stringify!($for_fn),
             "`](crate::",
             stringify!($for_fn),
-            ")."
+            "), which writes the encoded output as it is formatted. with a width ",
+            "or precision it buffers the output in one `String`; see the crate ",
+            "docs on display wrappers."
         )]
         pub fn $display_fn(input: &str) -> impl fmt::Display + '_ {
             struct W<'a>(&'a str);
