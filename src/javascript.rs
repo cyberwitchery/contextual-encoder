@@ -340,63 +340,6 @@ fn write_js_shared_escape<W: fmt::Write>(out: &mut W, c: char) -> fmt::Result {
 mod tests {
     use super::*;
 
-    type ForFn = fn(&str) -> String;
-
-    /// the bidi formatting controls, with their escaped forms.
-    const TEXT_DIRECTION: [(&str, &str); 9] = [
-        ("\u{202A}", r"\u202a"),
-        ("\u{202B}", r"\u202b"),
-        ("\u{202C}", r"\u202c"),
-        ("\u{202D}", r"\u202d"),
-        ("\u{202E}", r"\u202e"),
-        ("\u{2066}", r"\u2066"),
-        ("\u{2067}", r"\u2067"),
-        ("\u{2068}", r"\u2068"),
-        ("\u{2069}", r"\u2069"),
-    ];
-
-    #[test]
-    fn escapes_text_direction_controls() {
-        let encoders: [(&str, ForFn); 5] = [
-            ("javascript", for_javascript),
-            ("javascript_attribute", for_javascript_attribute),
-            ("javascript_block", for_javascript_block),
-            ("javascript_source", for_javascript_source),
-            ("js_template", for_js_template),
-        ];
-        for (name, encode) in encoders {
-            for (raw, escaped) in TEXT_DIRECTION {
-                assert_eq!(encode(raw), escaped, "{name}: {raw:?}");
-                assert_eq!(
-                    encode(&format!("a{raw}b")),
-                    format!("a{escaped}b"),
-                    "{name}: a{raw:?}b"
-                );
-            }
-        }
-        for (raw, escaped) in TEXT_DIRECTION {
-            assert_eq!(
-                for_javascript_source(&format!("var x = '{raw}';")),
-                format!(r"var x = \'{escaped}\';")
-            );
-        }
-    }
-
-    // -- for_javascript_block --
-
-    #[test]
-    fn js_block_encodes_slash() {
-        assert_eq!(for_javascript_block("a/b"), r"a\/b");
-    }
-
-    // -- for_javascript_source --
-
-    #[test]
-    fn js_source_uses_backslash_quotes() {
-        assert_eq!(for_javascript_source(r#"a"b"#), r#"a\"b"#);
-        assert_eq!(for_javascript_source("a'b"), r"a\'b");
-    }
-
     // -- write_js_shared_escape helper --
 
     #[test]

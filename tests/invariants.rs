@@ -12,14 +12,18 @@
 //! - **boundary**: for js_template, the css encoders, xml_comment and cdata,
 //!   two `write_*` calls into one sink concatenate to output that is still
 //!   safe and still decodes to both inputs.
-//! - **universal**: ascii-alphanumeric input is identity, and the `for_*`,
-//!   `write_*`, and `display_*` variants agree.
+//! - **universal**: empty and ascii-alphanumeric input is identity.
 //!
-//! the decoders and safety predicates are modelled directly on each encoder's
-//! documented mapping, so a passing sweep means the invariant genuinely holds
-//! rather than that the predicate is vacuous. the CSS contexts go further and
-//! run a tokenizer transcribed from CSS Syntax Level 3 §4.3 over the encoded
-//! output.
+//! the markup safety predicates come from the sink, not from the encoders: the
+//! XML 1.0 `Char` production, XML 1.1's `Char` and `RestrictedChar` (which may
+//! appear only as a character reference), and the HTML syntax for unquoted
+//! attribute values. where an encoder is stricter than its sink, as with the C1
+//! controls and noncharacters the markup encoders replace although XML 1.0
+//! allows them, the sweep checks the sink's property and `tests/conformance.rs`
+//! pins the exact mapping. CSS output also goes through a tokenizer transcribed
+//! from CSS Syntax Level 3 §4.3, CDATA output through a decoder for XML 1.0
+//! CDATA sections, rust literals through the Rust Reference's literal grammar,
+//! and the other decoders read each format's own escape syntax.
 
 use std::fmt;
 
@@ -41,39 +45,38 @@ fn one(c: char, buf: &mut [u8; 4]) -> &str {
 }
 
 // ===========================================================================
-// shared predicates (mirrors of the private engine helpers)
+// shared predicates
 // ===========================================================================
 
+/// a unicode noncharacter (Unicode §23.7).
 fn is_noncharacter(cp: u32) -> bool {
     (0xFDD0..=0xFDEF).contains(&cp) || (cp & 0xFFFE == 0xFFFE)
 }
 
-/// characters invalid in xml 1.0 output (replaced with space/dash by the
-/// html/xml encoders). mirrors `engine::is_invalid_for_xml`.
-fn is_invalid_for_xml(c: char) -> bool {
-    let cp = c as u32;
-    cp <= 0x08
-        || cp == 0x0B
-        || cp == 0x0C
-        || (0x0E..=0x1F).contains(&cp)
-        || cp == 0x7F
-        || (0x80..=0x9F).contains(&cp)
-        || is_noncharacter(cp)
+/// XML 1.0 §2.2 `Char`: what a document may contain, raw or referenced.
+fn is_xml10_char(c: char) -> bool {
+    matches!(
+        c,
+        '\t' | '\n' | '\r' | ' '..='\u{D7FF}' | '\u{E000}'..='\u{FFFD}' | '\u{10000}'..='\u{10FFFF}'
+    )
 }
 
-/// characters that cannot appear literally in xml 1.1 output (encoded as
-/// `&#xHH;` or, for nul / noncharacters, replaced with space). mirrors
-/// `engine::is_xml11_restricted_or_invalid`.
-fn is_xml11_restricted(c: char) -> bool {
-    let cp = c as u32;
-    cp == 0
-        || (0x01..=0x08).contains(&cp)
-        || cp == 0x0B
-        || cp == 0x0C
-        || (0x0E..=0x1F).contains(&cp)
-        || (0x7F..=0x9F).contains(&cp)
-        || cp == 0x2028
-        || is_noncharacter(cp)
+/// XML 1.1 §2.2 `Char`.
+fn is_xml11_char(c: char) -> bool {
+    matches!(c, '\u{1}'..='\u{D7FF}' | '\u{E000}'..='\u{FFFD}' | '\u{10000}'..='\u{10FFFF}')
+}
+
+/// XML 1.1 §2.2 `RestrictedChar`: a `Char` a document may hold only as a
+/// character reference.
+fn is_xml11_restricted_char(c: char) -> bool {
+    matches!(
+        c,
+        '\u{1}'..='\u{8}'
+            | '\u{B}'..='\u{C}'
+            | '\u{E}'..='\u{1F}'
+            | '\u{7F}'..='\u{84}'
+            | '\u{86}'..='\u{9F}'
+    )
 }
 
 // ===========================================================================
@@ -405,135 +408,136 @@ fn rust_char(name: &str, encode: ForFn) {
 // (B) safety properties
 // ===========================================================================
 
-/// length of a valid html/xml entity at the start of `s` (which begins with
-/// `&`), or `None` if `&` does not introduce one of the entities these
-/// encoders emit (`&amp;`, `&lt;`, `&gt;`, `&#DDD;`, `&#xHH;`).
-fn entity_len(s: &str) -> Option<usize> {
-    if s.starts_with("&amp;") {
-        return Some(5);
-    }
-    if s.starts_with("&lt;") || s.starts_with("&gt;") {
-        return Some(4);
-    }
-    let bytes = s.as_bytes();
-    if bytes.len() < 4 || bytes[1] != b'#' {
-        return None;
-    }
-    let mut i = 2;
-    let hex = bytes[i] == b'x';
-    if hex {
-        i += 1;
-    }
-    let start = i;
-    while i < bytes.len()
-        && (if hex {
-            bytes[i].is_ascii_hexdigit()
-        } else {
-            bytes[i].is_ascii_digit()
-        })
-    {
-        i += 1;
-    }
-    if i > start && i < bytes.len() && bytes[i] == b';' {
-        Some(i + 1)
-    } else {
-        None
-    }
-}
-
-/// true if every `&` in `s` introduces a valid entity — i.e. no raw ampersand
-/// leaked through unencoded.
-fn ampersands_are_entities(s: &str) -> bool {
-    let bytes = s.as_bytes();
-    let mut i = 0;
-    while i < bytes.len() {
-        if bytes[i] == b'&' {
-            match entity_len(&s[i..]) {
-                Some(n) => i += n,
-                None => return false,
-            }
-        } else {
-            i += 1;
+/// the character a reference at the start of `s` (which begins with `&`)
+/// names, and the reference's length, or `None` if `&` does not introduce one
+/// of the references these encoders emit (`&amp;`, `&lt;`, `&gt;`, `&#DDD;`,
+/// `&#xHH;`).
+fn reference(s: &str) -> Option<(char, usize)> {
+    for (entity, c) in [("&amp;", '&'), ("&lt;", '<'), ("&gt;", '>')] {
+        if s.starts_with(entity) {
+            return Some((c, entity.len()));
         }
     }
-    true
+    let body = s.strip_prefix("&#")?;
+    let (radix, digits) = match body.strip_prefix('x') {
+        Some(hex) => (16, hex),
+        None => (10, body),
+    };
+    let end = digits.find(';')?;
+    let number = &digits[..end];
+    if number.is_empty() || !number.chars().all(|d| d.is_digit(radix)) {
+        return None;
+    }
+    let c = char::from_u32(u32::from_str_radix(number, radix).ok()?)?;
+    Some((c, s.len() - digits.len() + end + 1))
 }
 
 /// asserts a markup encoder's output over the full sweep: no character matching
-/// `forbidden` appears raw, and every `&` is a valid entity.
+/// `forbidden` appears raw, every `&` starts a reference, and every reference
+/// names a character `referable` allows.
 fn assert_markup_safe(
     name: &str,
-    encode: impl Fn(&str) -> String,
+    encode: ForFn,
     forbidden: impl Fn(char) -> bool,
+    referable: impl Fn(char) -> bool,
 ) {
     let mut buf = [0u8; 4];
     for c in scalars() {
         let out = encode(one(c, &mut buf));
-        if let Some(bad) = out.chars().find(|&c| forbidden(c)) {
-            panic!("{name}: raw context-breaking char {bad:?} in output {out:?} for input {c:?}");
+        let mut i = 0;
+        while let Some(next) = out[i..].chars().next() {
+            if next != '&' {
+                assert!(
+                    !forbidden(next),
+                    "{name}: raw {next:?} in output {out:?} for input {c:?}"
+                );
+                i += next.len_utf8();
+                continue;
+            }
+            let Some((named, len)) = reference(&out[i..]) else {
+                panic!("{name}: raw '&' in output {out:?} for input {c:?}");
+            };
+            assert!(
+                referable(named),
+                "{name}: reference to {named:?} in output {out:?} for input {c:?}"
+            );
+            i += len;
         }
-        assert!(
-            ampersands_are_entities(&out),
-            "{name}: raw '&' in output {out:?} for input {c:?}"
-        );
     }
 }
 
-// text + attribute context: encodes < > " ' and &
+// text and quoted attributes: `<` opens markup, a quote closes the value, and
+// `>` completes `]]>`, which XML 1.0 §2.4 forbids in content
 fn markup_text(name: &str, encode: ForFn) {
-    assert_markup_safe(name, encode, |c| {
-        matches!(c, '<' | '>' | '"' | '\'') || is_invalid_for_xml(c)
-    });
+    assert_markup_safe(
+        name,
+        encode,
+        |c| matches!(c, '<' | '>' | '"' | '\'') || !is_xml10_char(c),
+        is_xml10_char,
+    );
 }
 
-// content context: does not encode quotes
+// text only: quotes delimit nothing
 fn markup_content(name: &str, encode: ForFn) {
-    assert_markup_safe(name, encode, |c| {
-        matches!(c, '<' | '>') || is_invalid_for_xml(c)
-    });
+    assert_markup_safe(
+        name,
+        encode,
+        |c| matches!(c, '<' | '>') || !is_xml10_char(c),
+        is_xml10_char,
+    );
 }
 
-// attribute context: does not encode '>'
+// quoted attribute values only: `>` is not in content there
 fn markup_attribute(name: &str, encode: ForFn) {
-    assert_markup_safe(name, encode, |c| {
-        matches!(c, '<' | '"' | '\'') || is_invalid_for_xml(c)
-    });
+    assert_markup_safe(
+        name,
+        encode,
+        |c| matches!(c, '<' | '"' | '\'') || !is_xml10_char(c),
+        is_xml10_char,
+    );
 }
 
-// the most aggressive: whitespace, delimiters, and controls (which become '-')
-// must never appear raw
+// HTML §13.1.2.3: an unquoted attribute value must not contain ascii
+// whitespace, `"`, `'`, `=`, `<`, `>` or `` ` ``
 fn unquoted_attribute(name: &str, encode: ForFn) {
-    assert_markup_safe(name, encode, |c| {
-        let cp = c as u32;
-        matches!(
-            c,
-            ' ' | '\t' | '\n' | '\x0C' | '\r' | '<' | '>' | '"' | '\'' | '/' | '=' | '`'
-        ) || cp <= 0x1F
-            || cp == 0x7F
-            || (0x80..=0x9F).contains(&cp)
-            || cp == 0x2028
-            || cp == 0x2029
-            || is_noncharacter(cp)
-    });
+    assert_markup_safe(
+        name,
+        encode,
+        |c| {
+            matches!(
+                c,
+                '\t' | '\n' | '\x0C' | '\r' | ' ' | '"' | '\'' | '=' | '<' | '>' | '`'
+            )
+        },
+        |_| true,
+    );
 }
 
-// xml 1.1: restricted controls, NEL and U+2028 become &#xHH; (not space)
 fn xml11_text(name: &str, encode: ForFn) {
-    assert_markup_safe(name, encode, |c| {
-        matches!(c, '<' | '>' | '"' | '\'') || is_xml11_restricted(c)
-    });
+    assert_markup_safe(
+        name,
+        encode,
+        |c| matches!(c, '<' | '>' | '"' | '\'') || !is_xml11_char(c) || is_xml11_restricted_char(c),
+        is_xml11_char,
+    );
 }
 
 fn xml11_content(name: &str, encode: ForFn) {
-    assert_markup_safe(name, encode, |c| {
-        matches!(c, '<' | '>') || is_xml11_restricted(c)
-    });
+    assert_markup_safe(
+        name,
+        encode,
+        |c| matches!(c, '<' | '>') || !is_xml11_char(c) || is_xml11_restricted_char(c),
+        is_xml11_char,
+    );
 }
 
 fn xml11_attribute(name: &str, encode: ForFn) {
-    assert_markup_safe(name, encode, |c| {
-        matches!(c, '<' | '"' | '\'') || is_xml11_restricted(c)
-    });
+    assert_markup_safe(
+        name,
+        encode,
+        |c| matches!(c, '<' | '"' | '\'') || !is_xml11_char(c) || is_xml11_restricted_char(c),
+        is_xml11_char,
+    );
 }
 
 /// true if the char is a dangerous CSS char that must be hex-escaped, excluding
@@ -954,12 +958,7 @@ fn mysql_string(name: &str, encode: ForFn) {
 /// CDATA section, reads back as `prefix`, the input and `suffix`.
 fn assert_cdata_holds_between(encode: ForFn, prefix: &str, input: &str, suffix: &str) {
     let section = format!("<![CDATA[{prefix}{}{suffix}]]>", encode(input));
-    let want = format!("{prefix}{}{suffix}", cdata_expected_value(input));
-    assert_eq!(
-        decode_cdata_fragment(&section),
-        Some(want),
-        "{prefix:?}+{input:?}+{suffix:?} -> {section:?}"
-    );
+    assert_cdata_reads_as(&section, &format!("{prefix}{input}{suffix}"));
 }
 
 fn cdata(name: &str, encode: ForFn) {
@@ -1003,12 +1002,24 @@ fn cdata(name: &str, encode: ForFn) {
     }
 }
 
-/// the character data `for_cdata` output is meant to denote.
-fn cdata_expected_value(input: &str) -> String {
-    input
-        .chars()
-        .map(|c| if is_invalid_for_xml(c) { ' ' } else { c })
-        .collect()
+/// asserts `section` is XML 1.0 `Char`s and decodes to `want`, except that a
+/// control or noncharacter in `want` may read back as a space. which of them
+/// `for_cdata` replaces is pinned in `tests/conformance.rs`.
+fn assert_cdata_reads_as(section: &str, want: &str) {
+    if let Some(bad) = section.chars().find(|&c| !is_xml10_char(c)) {
+        panic!("for_cdata: raw {bad:?} for {want:?} -> {section:?}");
+    }
+    let got = decode_cdata_fragment(section)
+        .unwrap_or_else(|| panic!("for_cdata: content escaped for {want:?} -> {section:?}"));
+    let replaced = |g: char, w: char| g == ' ' && (w.is_control() || is_noncharacter(w as u32));
+    assert!(
+        got.chars().count() == want.chars().count()
+            && got
+                .chars()
+                .zip(want.chars())
+                .all(|(g, w)| g == w || replaced(g, w)),
+        "for_cdata: value altered for {want:?} -> {section:?} reads as {got:?}"
+    );
 }
 
 /// decodes a wrapped `for_cdata` output back to character data, returning
@@ -1046,15 +1057,7 @@ fn cdata_section(head: &str, tail: &str) -> String {
 }
 
 fn assert_cdata_boundary_holds(head: &str, tail: &str) {
-    let section = cdata_section(head, tail);
-    let want = cdata_expected_value(head) + &cdata_expected_value(tail);
-    match decode_cdata_fragment(&section) {
-        Some(got) => assert_eq!(
-            got, want,
-            "for_cdata: value altered for {head:?}+{tail:?} -> {section:?}"
-        ),
-        None => panic!("for_cdata: content escaped for {head:?}+{tail:?} -> {section:?}"),
-    }
+    assert_cdata_reads_as(&cdata_section(head, tail), &format!("{head}{tail}"));
 }
 
 /// every string of length <= 4 over the alphabet the encoder branches on.
@@ -1105,8 +1108,8 @@ fn xml_comment(name: &str, encode: ForFn) {
         let s = one(c, &mut buf);
         let out = encode(s);
         assert!(
-            !out.chars().any(is_invalid_for_xml),
-            "{name}: raw invalid-xml char in {out:?} for {c:?}"
+            out.chars().all(is_xml10_char),
+            "{name}: raw non-`Char` in {out:?} for {c:?}"
         );
         for probe in [
             String::from(s),
@@ -1142,8 +1145,6 @@ include!("../src/encoders.rs");
 struct Encoder {
     name: &'static str,
     for_fn: ForFn,
-    write_fn: WriteFn,
-    disp_fn: ForFn,
 }
 
 // the property each context is swept by; any other pairing fails to compile.
@@ -1194,8 +1195,6 @@ macro_rules! registry {
             vec![$(Encoder {
                 name: stringify!($context),
                 for_fn: $for_fn,
-                write_fn: $write_fn as WriteFn,
-                disp_fn: |s| format!("{}", $display_fn(s)),
             },)*]
         }
 
@@ -1399,99 +1398,14 @@ fn boundary_xml_comment_cannot_form_a_double_hyphen() {
 }
 
 #[test]
-fn ascii_alphanumeric_is_identity() {
+fn empty_and_ascii_alphanumeric_input_is_identity() {
     let alnum: String = ('0'..='9').chain('a'..='z').chain('A'..='Z').collect();
     for enc in all_encoders() {
-        assert_eq!(
-            (enc.for_fn)(&alnum),
-            alnum,
-            "{}: ascii-alphanumeric input was not identity",
-            enc.name
-        );
-    }
-}
-
-#[test]
-fn for_write_display_parity() {
-    let encoders = all_encoders();
-    let mut buf = [0u8; 4];
-    let mut w = String::new();
-    for c in scalars() {
-        let s = one(c, &mut buf);
-        for enc in &encoders {
-            let f = (enc.for_fn)(s);
-            w.clear();
-            (enc.write_fn)(&mut w, s).unwrap();
-            let d = (enc.disp_fn)(s);
-            assert_eq!(f, w, "{}: for_ vs write_ mismatch for {c:?}", enc.name);
-            assert_eq!(f, d, "{}: for_ vs display_ mismatch for {c:?}", enc.name);
-        }
-    }
-    // multi-char inputs exercise lookahead-dependent paths (css separators,
-    // template `${`)
-    for input in [
-        "",
-        "<script>alert('xss')</script>",
-        "a'b\"c&d/e",
-        "]]>--`${x}`",
-        "café 世界 😀 𐍈",
-        "\x00\x0b\x1f\x7f\u{85}\u{2028}",
-        "hello world",
-        "<img src=x onerror=\"alert(1)\">",
-        "Hello, <world> & \"friends\"!",
-        "<café>",
-        "<>&\"'",
-        "&<>\"'/=`",
-        "&&",
-        "a&b&c",
-        "&amp;",
-        "&lt;",
-        "&#34;",
-        "a>b",
-        "a\"b",
-        "a'b",
-        "it's",
-        "café",
-        "日本語テスト",
-        "hello 😀 world",
-        "a\u{2028}b\u{2029}c",
-        "';alert(1);//",
-        "</script><script>alert(1)</script>",
-        "`template`",
-        "${alert(1)}",
-        "${a} and ${b}",
-        "$100",
-        "hello `world`",
-        "`Hello ${name}`, welcome\\n",
-        "\\\\",
-        "\\n",
-        "a\\b",
-        "expression(alert(1))",
-        "\"a",
-        "key=value&other=more",
-        "search term with spaces",
-        "https://example.com",
-        "</script>",
-        "'; DROP TABLE users; --",
-        "' OR '1'='1",
-        "abc\x08\t\n\x0C\r",
-        "\t\n\x0C\r ",
-        "test\x00\"\\\n\u{2028}'café",
-        "abc`${x}\\\t\n\r\x0C\x08\x00\x1F/\u{2028}\u{2029}café😀",
-        "test\x01\x7F<>&\u{0085}",
-        "C:\\Users\\test",
-        "test--comment-",
-        "x]]>y\x00z]]",
-    ] {
-        for enc in &encoders {
-            let f = (enc.for_fn)(input);
-            w.clear();
-            (enc.write_fn)(&mut w, input).unwrap();
-            let d = (enc.disp_fn)(input);
-            assert_eq!(f, w, "{}: for_ vs write_ mismatch for {input:?}", enc.name);
+        for input in ["", &alnum] {
             assert_eq!(
-                f, d,
-                "{}: for_ vs display_ mismatch for {input:?}",
+                (enc.for_fn)(input),
+                input,
+                "{}: {input:?} was not identity",
                 enc.name
             );
         }

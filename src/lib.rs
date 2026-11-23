@@ -426,29 +426,3 @@ pub use xml::{
     for_xml_comment, for_xml_content, write_cdata, write_xml, write_xml11, write_xml11_attribute,
     write_xml11_content, write_xml_attribute, write_xml_comment, write_xml_content,
 };
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    macro_rules! assert_empty {
-        (
-            $($context:ident: $module:ident::{$for_fn:ident, $write_fn:ident, $display_fn:ident}
-                => $property:ident,)*
-        ) => {
-            $(assert_eq!($for_fn(""), "", stringify!($for_fn));)*
-        };
-    }
-
-    #[test]
-    fn empty_string_returns_empty() {
-        encoders!(assert_empty);
-    }
-
-    #[test]
-    fn multibyte_utf8_xml() {
-        assert_eq!(for_xml("café"), "café");
-        assert_eq!(for_xml("世界"), "世界");
-        assert_eq!(for_xml("😀"), "😀");
-    }
-}

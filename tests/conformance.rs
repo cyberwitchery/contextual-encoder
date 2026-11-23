@@ -50,6 +50,8 @@ enum Deviation {
     Xml11RefWidth,
     /// `for_json` escapes `/` and leaves `&` and `>` raw.
     Json,
+    /// the javascript and css encoders escape the bidi formatting controls.
+    TextDirection,
 }
 
 #[allow(unused_macros)]
@@ -132,6 +134,20 @@ fn tsv_escape(s: &str) -> String {
         })
         .collect()
 }
+
+/// the bidi formatting controls (trojan source, CVE-2021-42574) with their css,
+/// javascript and rust escapes.
+const TEXT_DIRECTION: [(&str, &str, &str, &str); 9] = [
+    ("\u{202A}", r"\202a", r"\u202a", r"\u{202a}"),
+    ("\u{202B}", r"\202b", r"\u202b", r"\u{202b}"),
+    ("\u{202C}", r"\202c", r"\u202c", r"\u{202c}"),
+    ("\u{202D}", r"\202d", r"\u202d", r"\u{202d}"),
+    ("\u{202E}", r"\202e", r"\u202e", r"\u{202e}"),
+    ("\u{2066}", r"\2066", r"\u2066", r"\u{2066}"),
+    ("\u{2067}", r"\2067", r"\u2067", r"\u{2067}"),
+    ("\u{2068}", r"\2068", r"\u2068", r"\u{2068}"),
+    ("\u{2069}", r"\2069", r"\u2069", r"\u{2069}"),
+];
 
 // ===========================================================================
 // HTML context tests
@@ -280,6 +296,10 @@ mod html {
         // for_html_attribute encodes quotes
         upstream!(for_html_attribute(r#"a"b"#), "a&#34;b");
         upstream!(for_html_attribute("a'b"), "a&#39;b");
+        upstream!(
+            for_html_attribute(r#"a"b'c&d<e"#),
+            "a&#34;b&#39;c&amp;d&lt;e"
+        );
     }
 
     #[test]
@@ -294,6 +314,26 @@ mod html {
             for_html_unquoted_attribute("&<>\"'/=`"),
             "&amp;&lt;&gt;&#34;&#39;&#47;&#61;&#96;"
         );
+        upstream!(
+            for_html_unquoted_attribute("a\u{2028}b\u{2029}c"),
+            "a&#8232;b&#8233;c"
+        );
+        // the rest of ascii, and non-ascii, passes through
+        let safe = "ABCxyz019!#$%()*+,-.[]\\^_}";
+        upstream!(for_html_unquoted_attribute(safe), safe);
+        upstream!(for_html_unquoted_attribute("café"), "café");
+        upstream!(for_html_unquoted_attribute("日本語"), "日本語");
+    }
+
+    #[test]
+    fn unquoted_attr_replaces_controls_and_noncharacters_with_dash() {
+        let controls = ('\0'..='\u{1F}').chain('\u{7F}'..='\u{9F}');
+        for c in controls.filter(|c| !matches!(c, '\t' | '\n' | '\x0C' | '\r')) {
+            upstream!(for_html_unquoted_attribute(format!("a{c}b")), "a-b");
+        }
+        for c in ['\u{FDD0}', '\u{FDEF}', '\u{FFFE}', '\u{FFFF}', '\u{10FFFF}'] {
+            upstream!(for_html_unquoted_attribute(format!("a{c}b")), "a-b");
+        }
     }
 
     // -- Rust-specific: no surrogates --
@@ -458,6 +498,7 @@ mod javascript {
     #[test]
     fn universal_vs_attribute_slash() {
         upstream!(for_javascript("a/b"), r"a\/b");
+        upstream!(for_javascript_block("a/b"), r"a\/b");
         upstream!(for_javascript_attribute("a/b"), "a/b");
     }
 
@@ -467,6 +508,7 @@ mod javascript {
         upstream!(for_javascript_block(r#"a"b"#), r#"a\"b"#);
         upstream!(for_javascript("a'b"), r"a\x27b");
         upstream!(for_javascript_block("a'b"), r"a\'b");
+        upstream!(for_javascript_source(r#"a"b"#), r#"a\"b"#);
     }
 
     #[test]
@@ -476,6 +518,18 @@ mod javascript {
         // but still encodes control chars and line terminators
         upstream!(for_javascript_source("\n"), r"\n");
         upstream!(for_javascript_source("\u{2028}"), r"\u2028");
+    }
+
+    // a raw direction override in the data could reorder how the script reads
+    #[test]
+    fn text_direction_controls_escaped() {
+        for (raw, _, escaped, _) in TEXT_DIRECTION {
+            deviation!(TextDirection, for_javascript(raw), escaped);
+            deviation!(TextDirection, for_javascript_attribute(raw), escaped);
+            deviation!(TextDirection, for_javascript_block(raw), escaped);
+            deviation!(TextDirection, for_javascript_source(raw), escaped);
+            non_owasp!(for_js_template(raw), escaped);
+        }
     }
 
     // -- edge cases --
@@ -662,6 +716,10 @@ mod css {
         deviation!(CssTrailingSpace, for_css_string("\x01"), r"\1 ");
         deviation!(CssTrailingSpace, for_css_string("\""), r"\22 ");
         deviation!(CssTrailingSpace, for_css_string("'"), r"\27 ");
+        deviation!(CssTrailingSpace, for_css_string("\x1F"), r"\1f ");
+        deviation!(CssTrailingSpace, for_css_string("\x7F"), r"\7f ");
+        deviation!(CssTrailingSpace, for_css_string("\u{2028}"), r"\2028 ");
+        deviation!(CssTrailingSpace, for_css_string("\u{2029}"), r"\2029 ");
     }
 
     #[test]
@@ -673,10 +731,14 @@ mod css {
         upstream!(for_css_string("\"F"), r"\22 F"); // F is hex
         upstream!(for_css_string("a'1"), r"a\27 1"); // 1 is hex
         upstream!(for_css_string(r"a\b"), r"a\5c b"); // b is hex
-                                                      // next char is NOT hex → no space
+        upstream!(for_css_string("a&b"), r"a\26 b");
+        upstream!(for_css_string("a/b"), r"a\2f b");
+        // next char is NOT hex → no space
         upstream!(for_css_string("\"g"), r"\22g"); // g is not hex
         upstream!(for_css_string("\"z"), r"\22z");
         upstream!(for_css_string("\"!"), r"\22!");
+        upstream!(for_css_string("\x01x"), r"\1x");
+        deviation!(CssTrailingSpace, for_css_string("<x>"), r"\3cx\3e ");
     }
 
     #[test]
@@ -709,6 +771,36 @@ mod css {
             for_css_string("expression(alert(1))"),
             r"expression\28 alert\28 1\29\29 "
         );
+    }
+
+    // a raw direction override in the data could reorder how the stylesheet reads
+    #[test]
+    fn text_direction_controls_escaped() {
+        for (raw, escaped, _, _) in TEXT_DIRECTION {
+            // b is a hex digit, z is not
+            deviation!(TextDirection, for_css_string(raw), format!("{escaped} "));
+            deviation!(
+                TextDirection,
+                for_css_string(format!("{raw}b")),
+                format!("{escaped} b")
+            );
+            deviation!(
+                TextDirection,
+                for_css_string(format!("{raw}z")),
+                format!("{escaped}z")
+            );
+            deviation!(TextDirection, for_css_url(raw), format!("{escaped} "));
+            deviation!(
+                TextDirection,
+                for_css_url(format!("{raw}b")),
+                format!("{escaped} b")
+            );
+            deviation!(
+                TextDirection,
+                for_css_url(format!("{raw}z")),
+                format!("{escaped}z")
+            );
+        }
     }
 
     #[test]
@@ -1178,16 +1270,6 @@ mod form_urlencoded {
 mod xml {
     use super::*;
 
-    // -- XML 1.0 aliases --
-
-    #[test]
-    fn aliases_identical_to_html() {
-        let input = r#"<root attr="val">&amp; 'x' </root>"#;
-        std::assert_eq!(for_xml(input), for_html(input));
-        std::assert_eq!(for_xml_content(input), for_html_content(input));
-        std::assert_eq!(for_xml_attribute(input), for_html_attribute(input));
-    }
-
     // -- XML comment --
 
     #[test]
@@ -1251,6 +1333,7 @@ mod xml {
         upstream!(for_cdata(""), "");
         // `<` and `&` are fine inside CDATA
         upstream!(for_cdata("a < b && c"), "a < b && c");
+        upstream!(for_cdata("a\tb\nc\rd"), "a\tb\nc\rd");
     }
 
     #[test]
@@ -1324,6 +1407,9 @@ mod xml {
     fn cdata_invalid_xml_replaced() {
         upstream!(for_cdata("a\x00b"), "a b");
         upstream!(for_cdata("a\x01b"), "a b");
+        upstream!(for_cdata("a\x7Fb"), "a b");
+        upstream!(for_cdata("a\u{0080}b"), "a b");
+        deviation!(Nel, for_cdata("a\u{0085}b"), "a b");
         upstream!(for_cdata("a\u{FDD0}b"), "a b");
     }
 
@@ -1518,22 +1604,11 @@ mod rust_literals {
 
     // -- trojan source (CVE-2021-42574) --
 
-    /// the codepoints `rustc` rejects raw in a literal, with their escaped forms.
-    const TEXT_DIRECTION: [(&str, &str); 9] = [
-        ("\u{202A}", r"\u{202a}"),
-        ("\u{202B}", r"\u{202b}"),
-        ("\u{202C}", r"\u{202c}"),
-        ("\u{202D}", r"\u{202d}"),
-        ("\u{202E}", r"\u{202e}"),
-        ("\u{2066}", r"\u{2066}"),
-        ("\u{2067}", r"\u{2067}"),
-        ("\u{2068}", r"\u{2068}"),
-        ("\u{2069}", r"\u{2069}"),
-    ];
-
+    // `rustc` rejects these raw in a literal
     #[test]
-    fn text_direction_controls_never_reach_a_char_literal_raw() {
-        for (raw, escaped) in TEXT_DIRECTION {
+    fn text_direction_controls_never_reach_a_literal_raw() {
+        for (raw, _, _, escaped) in TEXT_DIRECTION {
+            non_owasp!(for_rust_string(raw), escaped);
             non_owasp!(for_rust_char(raw), escaped);
             non_owasp!(for_rust_char_checked(raw), Some(escaped.to_string()));
         }
@@ -1564,6 +1639,11 @@ mod rust_literals {
     }
 
     #[test]
+    fn byte_string_backslash() {
+        non_owasp!(for_rust_byte_string(r"a\b"), r"a\\b");
+    }
+
+    #[test]
     fn byte_string_named_escapes() {
         non_owasp!(for_rust_byte_string("\0"), "\\0");
         non_owasp!(for_rust_byte_string("\t"), "\\t");
@@ -1585,6 +1665,9 @@ mod rust_literals {
         non_owasp!(for_rust_byte_string("日"), r"\xe6\x97\xa5");
         // 😀 = U+1F600 → UTF-8: F0 9F 98 80
         non_owasp!(for_rust_byte_string("😀"), r"\xf0\x9f\x98\x80");
+        // the bidi controls are bytes like any other non-ascii
+        non_owasp!(for_rust_byte_string("\u{202E}"), r"\xe2\x80\xae");
+        non_owasp!(for_rust_byte_string("\u{2069}"), r"\xe2\x81\xa9");
     }
 
     #[test]
@@ -1785,6 +1868,11 @@ mod sql {
     }
 
     #[test]
+    fn sql_backtick_passes_through() {
+        non_owasp!(for_sql("a`b"), "a`b");
+    }
+
+    #[test]
     fn sql_control_chars_pass_through() {
         // standard SQL has no escape sequences for control characters
         non_owasp!(for_sql("\t"), "\t");
@@ -1884,6 +1972,11 @@ mod sql {
     #[test]
     fn backslash_double_quote_passes_through() {
         non_owasp!(for_sql_backslash(r#"a"b"#), r#"a"b"#);
+    }
+
+    #[test]
+    fn backslash_backtick_passes_through() {
+        non_owasp!(for_sql_backslash("a`b"), "a`b");
     }
 
     #[test]
