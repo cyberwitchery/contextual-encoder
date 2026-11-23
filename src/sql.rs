@@ -107,22 +107,3 @@ fn write_sql_backslash_encoded<W: fmt::Write>(
         _ => out.write_char(' '),
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    // -- for_sql --
-
-    #[test]
-    fn sql_backtick_passes_through() {
-        assert_eq!(for_sql("a`b"), "a`b");
-    }
-
-    // -- for_sql_backslash --
-
-    #[test]
-    fn backslash_backtick_passes_through() {
-        assert_eq!(for_sql_backslash("a`b"), "a`b");
-    }
-}

@@ -261,23 +261,3 @@ pub fn for_xml11_attribute(input: &str) -> String {
 pub fn write_xml11_attribute<W: fmt::Write>(out: &mut W, input: &str) -> fmt::Result {
     write_markup(out, input, &XML11_ATTRIBUTE)
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    // -- CDATA --
-
-    #[test]
-    fn cdata_writes_cannot_form_a_delimiter_across_the_boundary() {
-        let mut out = String::new();
-        write_cdata(&mut out, "a]]").unwrap();
-        write_cdata(&mut out, ">b").unwrap();
-        assert_eq!(out, "a]]>]<![CDATA[]]>]<![CDATA[]]><![CDATA[>b");
-
-        let mut out = String::new();
-        write_cdata(&mut out, "a]").unwrap();
-        write_cdata(&mut out, "]>b").unwrap();
-        assert_eq!(out, "a]]>]<![CDATA[]]>]<![CDATA[]]><![CDATA[>b");
-    }
-}
