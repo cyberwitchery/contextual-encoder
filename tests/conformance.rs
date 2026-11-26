@@ -1535,9 +1535,10 @@ mod rust_literals {
     }
 
     #[test]
-    fn string_nonchars_replaced() {
-        non_owasp!(for_rust_string("\u{FDD0}"), " ");
-        non_owasp!(for_rust_string("\u{FFFE}"), " ");
+    fn string_nonchars_escaped() {
+        non_owasp!(for_rust_string("\u{FDD0}"), r"\u{fdd0}");
+        non_owasp!(for_rust_string("\u{FFFE}"), r"\u{fffe}");
+        non_owasp!(for_rust_string("\u{10FFFF}"), r"\u{10ffff}");
     }
 
     #[test]
@@ -1576,8 +1577,9 @@ mod rust_literals {
     }
 
     #[test]
-    fn char_nonchars_replaced() {
-        non_owasp!(for_rust_char("\u{FDD0}"), " ");
+    fn char_nonchars_escaped() {
+        non_owasp!(for_rust_char("\u{FDD0}"), r"\u{fdd0}");
+        non_owasp!(for_rust_char("\u{FFFF}"), r"\u{ffff}");
     }
 
     // -- for_rust_char_checked --
@@ -1597,7 +1599,10 @@ mod rust_literals {
         non_owasp!(for_rust_char_checked("\\"), Some(r"\\".to_string()));
         non_owasp!(for_rust_char_checked("\t"), Some(r"\t".to_string()));
         non_owasp!(for_rust_char_checked("\x7F"), Some(r"\x7f".to_string()));
-        non_owasp!(for_rust_char_checked("\u{FDD0}"), Some(" ".to_string()));
+        non_owasp!(
+            for_rust_char_checked("\u{FDD0}"),
+            Some(r"\u{fdd0}".to_string())
+        );
         non_owasp!(for_rust_char_checked("é"), Some("é".to_string()));
         non_owasp!(for_rust_char_checked("😀"), Some("😀".to_string()));
     }

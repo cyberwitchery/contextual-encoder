@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **breaking:** `for_rust_string`, `for_rust_char` and `for_rust_char_checked` now escape the unicode non-characters (U+FDD0-U+FDEF, U+nFFFE, U+nFFFF) as `\u{HHHH}` instead of replacing them with a space. `rustc` accepts them raw in a literal, so the space only lost data (#80)
 - **breaking:** the context modules (`html`, `xml`, `javascript`, `css`, `uri`, `json`, `rust`, `sql`, `display`) are private. every encoder is still exported at the crate root, so `contextual_encoder::html::for_html` becomes `contextual_encoder::for_html`. the modules' security notes and encoding rules are now in the crate docs, under each context
 
 ## [0.11.0] - 2026-11-03

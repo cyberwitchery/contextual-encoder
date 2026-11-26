@@ -361,25 +361,12 @@ fn rust_byte_string(name: &str, encode: ForFn) {
     }
 }
 
-/// asserts `encode(input)` is a `quote`-delimited rust literal body denoting
-/// `input`, with each noncharacter read back as the space the encoder writes.
-fn assert_rust_literal_holds(name: &str, encode: ForFn, input: &str, quote: char) {
-    let out = encode(input);
-    let want: String = input
-        .chars()
-        .map(|c| if is_noncharacter(c as u32) { ' ' } else { c })
-        .collect();
-    assert_eq!(
-        rust_literal_unescape(&out, quote),
-        want,
-        "{name}: {input:?} -> {out:?}"
-    );
-}
-
 fn rust_string(name: &str, encode: ForFn) {
     let mut buf = [0u8; 4];
     for c in scalars() {
-        assert_rust_literal_holds(name, encode, one(c, &mut buf), '"');
+        assert_roundtrip(name, one(c, &mut buf), encode, |s| {
+            rust_literal_unescape(s, '"')
+        });
     }
     for input in [
         "say \"hi\"",
@@ -392,7 +379,7 @@ fn rust_string(name: &str, encode: ForFn) {
         "\u{FDD0}x\u{10FFFF}",
         "café 世界 😀",
     ] {
-        assert_rust_literal_holds(name, encode, input, '"');
+        assert_roundtrip(name, input, encode, |s| rust_literal_unescape(s, '"'));
     }
 }
 
@@ -400,7 +387,9 @@ fn rust_string(name: &str, encode: ForFn) {
 fn rust_char(name: &str, encode: ForFn) {
     let mut buf = [0u8; 4];
     for c in scalars() {
-        assert_rust_literal_holds(name, encode, one(c, &mut buf), '\'');
+        assert_roundtrip(name, one(c, &mut buf), encode, |s| {
+            rust_literal_unescape(s, '\'')
+        });
     }
 }
 
