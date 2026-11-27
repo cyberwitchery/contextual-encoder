@@ -216,9 +216,8 @@
 //!
 //! - named escapes: `\0`, `\t`, `\n`, `\r`, `\\`
 //! - C0 controls and DEL without named escapes → `\xHH`
-//! - unicode non-characters → space (string/char) or `\xHH` per byte (byte string)
-//! - bidi formatting controls → `\u{HHHH}` (string/char) or `\xHH` per byte
-//!   (byte string)
+//! - unicode non-characters and bidi formatting controls → `\u{HHHH}`
+//!   (string/char) or `\xHH` per byte (byte string)
 //!
 //! the encoders differ in which quote is escaped and how non-ASCII is handled:
 //!
@@ -227,6 +226,14 @@
 //! | `for_rust_string` | `"` → `\"` | passes through |
 //! | `for_rust_char` | `'` → `\'` | passes through |
 //! | `for_rust_byte_string` | `"` → `\"` | each UTF-8 byte → `\xHH` |
+//!
+//! #### non-characters
+//!
+//! a raw unicode non-character neither ends a string or char literal nor stops
+//! `rustc` compiling it, so replacing one would only lose data. the string and
+//! char encoders escape it as `\u{HHHH}` (five or six hex digits above
+//! U+FFFF), which keeps it visible in the generated source and the literal
+//! equal to the input.
 //!
 //! #### char literal length
 //!
